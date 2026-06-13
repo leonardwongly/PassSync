@@ -16,6 +16,23 @@ The v1 safety posture is intentionally conservative:
 - Passkey-bearing records are detected and blocked because the available CLI/Keychain password APIs cannot safely migrate passkey private key material.
 - TOTP secrets are synced into 1Password when available, but Apple Passwords verification-code writes are blocked because the Keychain internet-password API does not expose a safe verification-code write surface.
 
+## What Does Not Work Yet
+
+PassSync is not a complete password-manager migration tool. These limitations are intentional and should be understood before using live credentials:
+
+- **Passkeys are not migrated.** PassSync detects passkey-bearing records and blocks them. Safe passkey migration requires provider-supported FIDO Credential Exchange or manual passkey reenrollment on each website.
+- **Apple Passwords verification-code writes are not supported.** PassSync cannot safely create Apple Passwords TOTP / verification-code entries through the macOS Keychain internet-password API. 1Password-to-Apple records with TOTP are blocked by default.
+- **Apple Passwords passkey export/import is not implemented.** The current Apple integration only uses Keychain internet-password APIs for website/app passwords.
+- **1Password passkey export/import is not implemented.** The current 1Password integration uses `op` item JSON for login records. 1Password JSON templates are not a safe passkey migration path.
+- **Only website/app login records are in scope.** Secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, custom item types, and arbitrary custom fields are not synced.
+- **Continuous sync is not implemented.** v1 is one-time plan/apply only. It does not watch for changes or run in the background.
+- **The interactive conflict resolver is basic.** During `sync --apply`, conflicts can be resolved one by one, skipped, or aborted. There is no richer review UI yet.
+- **No restore command exists yet.** PassSync can create and validate encrypted backups, but it does not yet restore provider state from a backup.
+- **No native macOS app exists yet.** The planned SwiftUI app is future work.
+- **Apple Passwords behavior depends on local Keychain permissions and iCloud Keychain state.** Test in simulation or an isolated macOS user/VM before using `--apply` on your primary account.
+
+If any item above appears in a plan as `unsupported`, PassSync should be treated as working as designed, not as having completed that part of the migration.
+
 ## Requirements
 
 - macOS 14 or newer.
