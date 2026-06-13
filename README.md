@@ -18,18 +18,30 @@ The v1 safety posture is intentionally conservative:
 
 ## What Does Not Work Yet
 
-PassSync is not a complete password-manager migration tool. These limitations are intentional and should be understood before using live credentials:
+PassSync is not a complete password-manager migration tool. These are the current hard limits and unfinished areas.
 
-- **Passkeys are not migrated.** PassSync detects passkey-bearing records and blocks them. Safe passkey migration requires provider-supported FIDO Credential Exchange or manual passkey reenrollment on each website.
+### Blocked by Provider or Platform APIs
+
+- **Passkeys are not migrated.** PassSync detects passkey-bearing records and blocks them. Safe migration requires provider-supported FIDO Credential Exchange or manual passkey reenrollment on each website.
 - **Apple Passwords verification-code writes are not supported.** PassSync cannot safely create Apple Passwords TOTP / verification-code entries through the macOS Keychain internet-password API. 1Password-to-Apple records with TOTP are blocked by default.
 - **Apple Passwords passkey export/import is not implemented.** The current Apple integration only uses Keychain internet-password APIs for website/app passwords.
 - **1Password passkey export/import is not implemented.** The current 1Password integration uses `op` item JSON for login records. 1Password JSON templates are not a safe passkey migration path.
-- **Only website/app login records are in scope.** Secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, custom item types, and arbitrary custom fields are not synced.
+- **Apple Passwords behavior depends on local Keychain permissions and iCloud Keychain state.** PassSync can improve checks and warnings, but it cannot fully control Apple permission prompts or iCloud Keychain propagation.
+
+### Not Built Yet
+
+- **Restore is not implemented.** PassSync can create and validate encrypted backups, but it cannot yet restore provider state from a backup.
 - **Continuous sync is not implemented.** v1 is one-time plan/apply only. It does not watch for changes or run in the background.
-- **The interactive conflict resolver is basic.** During `sync --apply`, conflicts can be resolved one by one, skipped, or aborted. There is no richer review UI yet.
-- **No restore command exists yet.** PassSync can create and validate encrypted backups, but it does not yet restore provider state from a backup.
-- **The native macOS app is local-build only.** A SwiftUI app target exists, but signing, notarization, releases, and installer packaging are not implemented yet.
-- **Apple Passwords behavior depends on local Keychain permissions and iCloud Keychain state.** Test in simulation or an isolated macOS user/VM before using `--apply` on your primary account.
+- **Conflict review is still basic.** The CLI can prompt per conflict during apply, and the macOS app can display plan actions, but there is no rich field-by-field merge UI yet.
+- **Only website/app login records are in scope.** Secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, custom item types, and arbitrary custom fields are not synced.
+- **The native macOS app is local-build only.** A SwiftUI app target exists, but signing, notarization, releases, auto-update, and installer packaging are not implemented.
+
+### Deliberately Not Attempted
+
+- PassSync does not scrape Passwords.app UI.
+- PassSync does not dump raw passkey private key material.
+- PassSync does not silently create password-only replacements for passkey records.
+- PassSync does not silently drop TOTP secrets when writing to Apple Passwords unless `--allow-password-only-for-unsupported-security-material` is explicitly used.
 
 If any item above appears in a plan as `unsupported`, PassSync should be treated as working as designed, not as having completed that part of the migration.
 
@@ -285,19 +297,30 @@ To intentionally allow password-only writes when security material cannot be tra
 
 Use that flag only after reviewing the plan.
 
-## Roadmap
+## Future Plans
 
-v2 candidates:
+### Near Term
 
-- Continuous sync with durable state and change detection.
-- FIDO Credential Exchange import/export support if 1Password and Apple expose compatible local automation surfaces.
-- First-class interactive conflict resolver.
-- Stronger backup KDF such as PBKDF2 or Argon2.
+- **Restore flow.** Add `restore-plan` and `restore --apply` so encrypted backups can be used to recover provider-visible records.
+- **Better conflict review.** Add field-level diffs, per-field merge decisions, batch actions, and reusable decision files.
+- **Doctor checks.** Expand preflight into `doctor` checks for `op`, Keychain access, app bundle state, backup writability, and risky iCloud Keychain conditions.
+- **Simulation examples.** Add built-in examples for minimal login, conflict, TOTP, passkey-blocked, and bidirectional migration cases.
+- **Backup hardening.** Move the encrypted backup KDF from the current versioned SHA-256 iteration scheme to a standard KDF such as PBKDF2 or Argon2.
 
-v2/v3 candidates:
+### Mid Term
 
-- Signing, notarization, and release packaging for the native macOS app.
-- Richer SwiftUI conflict review and backup restore flows.
+- **Signed macOS app distribution.** Add signing, notarization, release packaging, and a documented install path for the SwiftUI app.
+- **Richer SwiftUI workflows.** Add guided preflight, plan review, backup creation, conflict resolution, and restore screens.
+- **Durable sync state.** Add a local SQLite state store for provider fingerprints, last-seen records, decisions, and audit history.
+- **Expanded item audits.** Detect secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, and custom fields, then report exactly what can and cannot be migrated.
+- **Manual passkey/TOTP migration guides.** Add account-level checklists for records that require provider-supported Credential Exchange or manual reenrollment.
+
+### Longer Term
+
+- **Continuous sync.** Add an opt-in background sync mode after restore, conflict review, and durable state are mature.
+- **Credential Exchange integration.** Investigate Apple AuthenticationServices and provider-supported FIDO Credential Exchange flows for user-mediated passkey migration.
+- **Credential provider extension.** Explore whether a future app/extension should provide passwords or one-time passcodes to AutoFill instead of only migrating records.
+- **Release automation.** Add CI, signed builds, notarization checks, changelogs, and update distribution.
 
 ## License
 
