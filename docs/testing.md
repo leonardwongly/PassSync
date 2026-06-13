@@ -218,6 +218,7 @@ rm -f /tmp/passsync-ci-state.sqlite
 "$BIN_DIR/passsync" state-record-simulation --input Examples/simulation-state.json --state-path /tmp/passsync-ci-state.sqlite
 "$BIN_DIR/passsync" state-summary --state-path /tmp/passsync-ci-state.sqlite
 "$BIN_DIR/passsync" state-list-credentials --state-path /tmp/passsync-ci-state.sqlite --limit 5
+Scripts/cli_regression_tests.sh
 Scripts/package_release.sh /tmp/passsync-release-artifacts
 ```
 

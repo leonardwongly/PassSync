@@ -52,5 +52,8 @@ jobs:
           "$BIN_DIR/passsync" state-summary --state-path /tmp/passsync-ci-state.sqlite
           "$BIN_DIR/passsync" state-list-credentials --state-path /tmp/passsync-ci-state.sqlite --limit 5
 
+      - name: Run CLI failure regressions
+        run: Scripts/cli_regression_tests.sh
+
       - name: Package unsigned release archive
         run: Scripts/package_release.sh /tmp/passsync-release-artifacts

@@ -514,7 +514,7 @@ Use that flag only after reviewing the plan.
 - **State-store hardening.** Connect more live apply and review workflows to the non-secret SQLite metadata store and add schema migration tests before using it for background sync.
 - **Audit hardening.** Sign receipts, add stronger chain validation, and make post-apply verification failures more visible.
 - **Signed macOS distribution.** Add Developer ID signing, hardened runtime, notarization, stapling, and release automation.
-- **Malformed-input hardening.** Expand negative fixtures into end-to-end CLI stderr/exit-code regression tests.
+- **Malformed-input hardening.** Continue expanding end-to-end CLI stderr/exit-code regression tests as new parser surfaces are added.
 
 ### Mid Term
 
