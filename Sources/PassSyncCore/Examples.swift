@@ -16,16 +16,26 @@ public struct SimulationExample: Codable, Equatable, Sendable, Identifiable {
 
 public enum SimulationExamples {
     public static let all: [SimulationExample] = [
+        empty,
         minimal,
         conflict,
         totp,
         passkey,
+        passwordOnlyTotp,
+        duplicates,
+        restoreMissing,
         bidirectional
     ]
 
     public static func named(_ name: String) -> SimulationExample? {
         all.first { $0.name == name }
     }
+
+    public static let empty = SimulationExample(
+        name: "empty",
+        summary: "Both providers are empty; useful for checking no-op output.",
+        state: SimulationState(onePasswordRecords: [], appleRecords: [])
+    )
 
     public static let minimal = SimulationExample(
         name: "minimal",
@@ -125,6 +135,69 @@ public enum SimulationExamples {
         )
     )
 
+    public static let passwordOnlyTotp = SimulationExample(
+        name: "password-only-totp",
+        summary: "TOTP-bearing 1Password login for testing explicit password-only Apple downgrade behavior.",
+        state: SimulationState(
+            onePasswordRecords: [
+                totp.state.onePasswordRecords[0]
+            ],
+            appleRecords: []
+        )
+    )
+
+    public static let duplicates = SimulationExample(
+        name: "duplicates",
+        summary: "Multiple records with the same website and username; newest modified record is selected.",
+        state: SimulationState(
+            onePasswordRecords: [
+                CredentialRecord(
+                    provider: .onePassword,
+                    sourceID: "onep-duplicate-old",
+                    vaultID: "PassSync-Test",
+                    title: "Duplicate Example Old",
+                    username: "duplicate@example.test",
+                    password: "old-dummy-password",
+                    urls: ["https://duplicate.example.test/login"],
+                    hasPasskey: false,
+                    modifiedAt: exampleDate("2026-06-10T12:00:00Z")
+                ),
+                CredentialRecord(
+                    provider: .onePassword,
+                    sourceID: "onep-duplicate-new",
+                    vaultID: "PassSync-Test",
+                    title: "Duplicate Example New",
+                    username: "duplicate@example.test",
+                    password: "new-dummy-password",
+                    urls: ["https://duplicate.example.test/login"],
+                    hasPasskey: false,
+                    modifiedAt: exampleDate("2026-06-13T12:00:00Z")
+                )
+            ],
+            appleRecords: []
+        )
+    )
+
+    public static let restoreMissing = SimulationExample(
+        name: "restore-missing",
+        summary: "Apple Passwords contains a login that 1Password lacks; useful as backup-like restore source data.",
+        state: SimulationState(
+            onePasswordRecords: [],
+            appleRecords: [
+                CredentialRecord(
+                    provider: .applePasswords,
+                    sourceID: "apple-restore-missing",
+                    title: "Restore Missing Example",
+                    username: "restore@example.test",
+                    password: "restore-dummy-password",
+                    urls: ["https://restore.example.test/login"],
+                    hasPasskey: false,
+                    modifiedAt: exampleDate("2026-06-13T16:00:00Z")
+                )
+            ]
+        )
+    )
+
     public static let bidirectional = SimulationExample(
         name: "bidirectional",
         summary: "Mixed create, conflict, passkey-blocked, and TOTP-blocked cases.",
@@ -133,9 +206,10 @@ public enum SimulationExamples {
                 minimal.state.onePasswordRecords[0],
                 conflict.state.onePasswordRecords[0],
                 passkey.state.onePasswordRecords[0],
-                totp.state.onePasswordRecords[0]
+                totp.state.onePasswordRecords[0],
+                duplicates.state.onePasswordRecords[1]
             ],
-            appleRecords: conflict.state.appleRecords
+            appleRecords: conflict.state.appleRecords + restoreMissing.state.appleRecords
         )
     )
 
@@ -143,4 +217,3 @@ public enum SimulationExamples {
         ISO8601DateFormatter().date(from: value)
     }
 }
-

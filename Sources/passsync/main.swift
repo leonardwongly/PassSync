@@ -40,8 +40,12 @@ struct PassSyncCLI {
             try simulate(args, apply: args.contains("--apply"))
         case "backup":
             try backup(args)
+        case "backup-migrate":
+            try backupMigrate(args)
         case "restore-check":
             try restoreCheck(args)
+        case "restore-verify":
+            try restoreVerify(args)
         case "restore-plan":
             try restore(args, apply: false)
         case "restore":
@@ -230,6 +234,60 @@ struct PassSyncCLI {
         print("- Apple records: \(payload.appleRecords.count)")
         for warning in payload.warnings {
             print("- warning: \(warning)")
+        }
+    }
+
+    private static func backupMigrate(_ args: [String]) throws {
+        let options = try CLIOptions(args: args)
+        guard let inputPath = options.inputPath else {
+            throw PassSyncError.invalidArguments("backup-migrate requires --input <path>.")
+        }
+        guard let outputPath = options.outputPath else {
+            throw PassSyncError.invalidArguments("backup-migrate requires --output <path>.")
+        }
+        let passphrase = try readBackupPassphrase()
+        let info = try BackupManager().migrateEncryptedBackup(
+            inputPath: inputPath,
+            outputPath: outputPath,
+            passphrase: passphrase
+        )
+        if options.json {
+            printJSON(info)
+        } else {
+            print("Migrated encrypted backup: \(outputPath)")
+            print("- format: \(info.format)")
+            print("- kdf: \(info.kdf)")
+            print("- iterations: \(info.iterations)")
+        }
+    }
+
+    private static func restoreVerify(_ args: [String]) throws {
+        let options = try CLIOptions(args: args)
+        guard let path = options.backupPath else {
+            throw PassSyncError.invalidArguments("restore-verify requires --backup-path <path>.")
+        }
+        guard let target = options.restoreTarget else {
+            throw PassSyncError.invalidArguments("restore-verify requires --to 1password|apple-passwords.")
+        }
+
+        let passphrase = try readBackupPassphrase()
+        let backup = try BackupManager().readEncryptedBackup(inputPath: path, passphrase: passphrase)
+        let current = try fetchCurrentRecords(target: target, options: options)
+        let report = RestoreVerifier().verify(
+            backup: backup,
+            currentRecords: current,
+            target: target,
+            allowPasswordOnlyForUnsupportedSecurityMaterial: options.allowPasswordOnly
+        )
+
+        if options.json {
+            printJSON(report)
+        } else {
+            printRestoreVerificationReport(report)
+        }
+
+        guard report.passed else {
+            throw PassSyncError.unsafeApply("Restore verification found \(report.failureCount) mismatch or unsupported record(s).")
         }
     }
 
@@ -487,6 +545,30 @@ struct PassSyncCLI {
         }
     }
 
+    private static func printRestoreVerificationReport(_ report: RestoreVerificationReport) {
+        print("PassSync restore verification")
+        print("- target: \(report.target.rawValue)")
+        print("- result: \(report.passed ? "passed" : "failed")")
+        print("- passed records: \(report.passCount)")
+        print("- warnings: \(report.warningCount)")
+        print("- failures: \(report.failureCount)")
+        for issue in report.issues {
+            let mark: String
+            switch issue.severity {
+            case .pass:
+                mark = "PASS"
+            case .warning:
+                mark = "WARN"
+            case .fail:
+                mark = "FAIL"
+            }
+            print("[\(mark)] \(issue.key?.description ?? "provider"): \(issue.title) - \(issue.detail)")
+            for diff in issue.fieldDiffs {
+                print("  - \(diff.field.rawValue): backup=\(diff.sourceValue.isEmpty ? "<empty>" : diff.sourceValue), current=\(diff.destinationValue.isEmpty ? "<empty>" : diff.destinationValue)")
+            }
+        }
+    }
+
     private static func printJSON<T: Encodable>(_ value: T) {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -536,7 +618,9 @@ struct PassSyncCLI {
       passsync sync --direction 1p-to-apple|apple-to-1p|bidirectional [options] [--apply]
       passsync simulate --input PATH --direction 1p-to-apple|apple-to-1p|bidirectional [options] [--apply --output PATH]
       passsync backup [--backup-path PATH] [--vault VAULT]
+      passsync backup-migrate --input PATH --output PATH [--json]
       passsync restore-check --backup-path PATH
+      passsync restore-verify --backup-path PATH --to 1password|apple-passwords [options]
       passsync restore-plan --backup-path PATH --to 1password|apple-passwords [options]
       passsync restore --backup-path PATH --to 1password|apple-passwords [options] [--apply]
 
@@ -547,8 +631,8 @@ struct PassSyncCLI {
       --vault VALUE              1Password vault name or ID.
       --backup-path PATH         Encrypted backup path. Required for restore-check; defaulted for backup/apply.
       --to VALUE                 Restore target: 1password|apple-passwords.
-      --input PATH               Simulation input state JSON.
-      --output PATH              Simulation output state JSON for --apply.
+      --input PATH               Simulation input state JSON or backup-migrate source.
+      --output PATH              Simulation output state JSON for --apply or backup-migrate destination.
       --app-bundle PATH          App bundle path for doctor checks.
       --op-path PATH             Path to op. Default: /opt/homebrew/bin/op.
       --json                     Print redacted JSON plan.

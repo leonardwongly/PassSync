@@ -34,6 +34,18 @@ public struct EncryptedBackupEnvelope: Codable, Sendable {
     public var tag: Data
 }
 
+public struct BackupEnvelopeInfo: Codable, Equatable, Sendable {
+    public var format: String
+    public var kdf: String
+    public var iterations: Int
+
+    public init(format: String, kdf: String, iterations: Int) {
+        self.format = format
+        self.kdf = kdf
+        self.iterations = iterations
+    }
+}
+
 public struct BackupManager: Sendable {
     public static let defaultIterations = 310_000
 
@@ -89,6 +101,24 @@ public struct BackupManager: Sendable {
         )
         let plaintext = try AES.GCM.open(sealed, using: key)
         return try decoder.decode(BackupPayload.self, from: plaintext)
+    }
+
+    public func inspectEncryptedBackup(inputPath: String) throws -> BackupEnvelopeInfo {
+        let data = try Data(contentsOf: URL(fileURLWithPath: inputPath))
+        let envelope = try JSONDecoder().decode(EncryptedBackupEnvelope.self, from: data)
+        return BackupEnvelopeInfo(format: envelope.format, kdf: envelope.kdf, iterations: envelope.iterations)
+    }
+
+    public func migrateEncryptedBackup(inputPath: String, outputPath: String, passphrase: String) throws -> BackupEnvelopeInfo {
+        let inputURL = URL(fileURLWithPath: inputPath).standardizedFileURL
+        let outputURL = URL(fileURLWithPath: outputPath).standardizedFileURL
+        guard inputURL.path != outputURL.path else {
+            throw PassSyncError.backupRequired("backup-migrate requires distinct input and output paths.")
+        }
+
+        let payload = try readEncryptedBackup(inputPath: inputPath, passphrase: passphrase)
+        try writeEncryptedBackup(payload: payload, passphrase: passphrase, outputPath: outputPath)
+        return try inspectEncryptedBackup(inputPath: outputPath)
     }
 
     private func randomData(count: Int) -> Data {

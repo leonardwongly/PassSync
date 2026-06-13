@@ -1,5 +1,7 @@
 # PassSync
 
+[![CI](https://github.com/leonardwongly/PassSync/actions/workflows/ci.yml/badge.svg)](https://github.com/leonardwongly/PassSync/actions/workflows/ci.yml)
+
 PassSync is a macOS-only, one-time CLI for comparing and syncing website/app login records between 1Password and Apple Passwords.
 
 ## Status
@@ -16,6 +18,14 @@ The v1 safety posture is intentionally conservative:
 - Passkey-bearing records are detected and blocked because the available CLI/Keychain password APIs cannot safely migrate passkey private key material.
 - TOTP secrets are synced into 1Password when available, but Apple Passwords verification-code writes are blocked because the Keychain internet-password API does not expose a safe verification-code write surface.
 - Encrypted backups use AES-GCM with PBKDF2-HMAC-SHA256 key derivation. Older PassSync backups using the v1 SHA-256 iteration envelope remain readable.
+- `restore-verify` compares current provider state with a backup and exits non-zero when records are missing, different, or unsupported.
+- `backup-migrate` rewrites readable backups with the current backup envelope.
+
+Security and validation docs:
+
+- [Security policy](SECURITY.md)
+- [Threat model](docs/threat-model.md)
+- [Testing guide](docs/testing.md)
 
 ## What Does Not Work Yet
 
@@ -36,6 +46,7 @@ PassSync is not a complete password-manager migration tool. These are the curren
 - **Only website/app login records are in scope.** Secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, custom item types, and arbitrary custom fields are not synced.
 - **The native macOS app is local-build only.** A SwiftUI app target exists, but signing, notarization, releases, auto-update, and installer packaging are not implemented.
 - **Restore is provider-visible login recovery only.** Restore can plan/apply backed-up website/app login records for one provider at a time. It still blocks passkey evidence and Apple-destination TOTP unless explicitly allowed as password-only.
+- **Restore verification is provider-visible only.** `restore-verify` checks backed-up website/app login records against the selected provider, but it cannot prove passkey private key material, Apple verification-code entries, or iCloud Keychain propagation.
 
 ### Deliberately Not Attempted
 
@@ -65,15 +76,16 @@ swift test
 Build the native macOS app target:
 
 ```sh
-swift build --product PassSync
+swift build --product PassSyncApp
 ```
 
 Create a local `.app` bundle:
 
 ```sh
 Scripts/package_app.sh
-open .build/debug/PassSync.app
 ```
+
+The packaging script prints the generated `.app` path. Open that path in Finder or with `open`.
 
 Run a safe preflight. This checks local tool availability but does not enumerate credentials:
 
@@ -84,10 +96,13 @@ swift run passsync preflight
 Run deeper local readiness checks:
 
 ```sh
+APP_PATH="$(Scripts/package_app.sh)"
 swift run passsync doctor \
   --backup-path "$HOME/.passsync/backups/doctor-probe.psbackup" \
-  --app-bundle .build/debug/PassSync.app
+  --app-bundle "$APP_PATH"
 ```
+
+See [docs/testing.md](docs/testing.md) for a staged testing path from offline fixtures to isolated live apply.
 
 Run the fully offline simulator first:
 
@@ -126,22 +141,22 @@ swift run passsync sync \
   --apply
 ```
 
-The executable is produced at:
+Find the CLI executable path with:
 
 ```sh
-.build/debug/passsync
+echo "$(swift build --show-bin-path)/passsync"
 ```
 
-The native macOS app executable is produced at:
+Find the native macOS app executable path with:
 
 ```sh
-.build/debug/PassSync
+echo "$(swift build --show-bin-path)/PassSyncApp"
 ```
 
-The local app bundle script writes:
+The local app bundle script writes a `PassSync.app` bundle under SwiftPM's active build output directory and prints the path:
 
 ```sh
-.build/debug/PassSync.app
+Scripts/package_app.sh
 ```
 
 ## Usage
@@ -200,6 +215,14 @@ Verify that a backup can be decrypted:
 swift run passsync restore-check --backup-path "$HOME/.passsync/backups/manual.psbackup"
 ```
 
+Rewrite a readable backup with the current AES-GCM and PBKDF2-HMAC-SHA256 envelope:
+
+```sh
+swift run passsync backup-migrate \
+  --input "$HOME/.passsync/backups/old.psbackup" \
+  --output "$HOME/.passsync/backups/migrated.psbackup"
+```
+
 Backups include credentials visible to the 1Password CLI and macOS Keychain internet-password APIs. Provider-managed passkey private key material is not exported through those APIs.
 
 Plan a restore from backup without mutating anything:
@@ -209,6 +232,16 @@ swift run passsync restore-plan \
   --backup-path "$HOME/.passsync/backups/manual.psbackup" \
   --to 1password
 ```
+
+Verify current provider state against a backup:
+
+```sh
+swift run passsync restore-verify \
+  --backup-path "$HOME/.passsync/backups/manual.psbackup" \
+  --to 1password
+```
+
+`restore-verify` exits non-zero when backed-up records are missing, different, unsupported, or otherwise not restored in the target provider.
 
 Apply a reviewed restore plan:
 
@@ -340,8 +373,9 @@ Use that flag only after reviewing the plan.
 - **Per-field conflict decisions.** Turn field-level diff display into a real merge model with per-field choices, batch actions, and reusable decision files.
 - **Restore UI hardening.** Add richer SwiftUI restore review, restore history, and clearer pre-restore backup evidence.
 - **Doctor expansion.** Add more checks for `op` authentication edge cases, Keychain read/write probes, app signing state, and risky iCloud Keychain conditions.
-- **More examples.** Add examples for restore, password-only TOTP downgrade, duplicate records, empty providers, and malformed input handling.
-- **Legacy backup migration.** Add an explicit command to read v1 backups and rewrite them with the PBKDF2 v2 envelope.
+- **Decision-file workflow.** Export reviewed sync or restore decisions, re-open them for review, and apply exactly the reviewed plan.
+- **Restore audit trail.** Record restore verification results, pre-restore backup paths, and apply receipts.
+- **Malformed-input fixtures.** Add explicit invalid fixture cases for CLI parser and error-message regression tests.
 
 ### Mid Term
 

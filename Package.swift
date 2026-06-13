@@ -8,7 +8,7 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "PassSync", targets: ["PassSyncMac"]),
+        .executable(name: "PassSyncApp", targets: ["PassSyncMac"]),
         .executable(name: "passsync", targets: ["passsync"]),
         .library(name: "PassSyncCore", targets: ["PassSyncCore"])
     ],

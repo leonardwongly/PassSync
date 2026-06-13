@@ -5,10 +5,14 @@ import Testing
 @Test func examplesIncludeExpectedFixtures() {
     let names = Set(SimulationExamples.all.map(\.name))
 
+    #expect(names.contains("empty"))
     #expect(names.contains("minimal"))
     #expect(names.contains("conflict"))
     #expect(names.contains("totp"))
     #expect(names.contains("passkey"))
+    #expect(names.contains("password-only-totp"))
+    #expect(names.contains("duplicates"))
+    #expect(names.contains("restore-missing"))
     #expect(names.contains("bidirectional"))
 }
 
@@ -20,4 +24,3 @@ import Testing
     #expect(decoded.onePasswordRecords.count == example.state.onePasswordRecords.count)
     #expect(decoded.appleRecords.count == example.state.appleRecords.count)
 }
-

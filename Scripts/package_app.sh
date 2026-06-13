@@ -3,7 +3,7 @@ set -euo pipefail
 
 CONFIGURATION="${1:-debug}"
 
-swift build --product PassSync -c "$CONFIGURATION"
+swift build --product PassSyncApp -c "$CONFIGURATION" >&2
 BIN_DIR="$(swift build --show-bin-path -c "$CONFIGURATION")"
 APP_DIR="$BIN_DIR/PassSync.app"
 CONTENTS_DIR="$APP_DIR/Contents"
@@ -12,7 +12,7 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
-cp "$BIN_DIR/PassSync" "$MACOS_DIR/PassSync"
+cp "$BIN_DIR/PassSyncApp" "$MACOS_DIR/PassSync"
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

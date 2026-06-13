@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build CLI
+        run: swift build --product passsync
+
+      - name: Build macOS app executable
+        run: swift build --product PassSyncApp
+
+      - name: Package local app bundle
+        run: |
+          APP_PATH="$(Scripts/package_app.sh)"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Validate app bundle plist
+        run: plutil -lint "$APP_PATH/Contents/Info.plist"
+
+      - name: Smoke test examples
+        run: |
+          BIN_DIR="$(swift build --show-bin-path)"
+          "$BIN_DIR/passsync" examples list
+          "$BIN_DIR/passsync" examples show minimal > /tmp/passsync-minimal.json
+          jq empty /tmp/passsync-minimal.json
