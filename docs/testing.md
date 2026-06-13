@@ -185,12 +185,16 @@ swift build --product PassSyncApp
 APP_PATH="$(Scripts/package_app.sh)"
 plutil -lint "$APP_PATH/Contents/Info.plist"
 BIN_DIR="$(swift build --show-bin-path)"
+"$BIN_DIR/passsync" version
 "$BIN_DIR/passsync" examples list
 "$BIN_DIR/passsync" examples show minimal > /tmp/passsync-minimal.json
 jq empty /tmp/passsync-minimal.json
 "$BIN_DIR/passsync" simulate --input Examples/simulation-state.json --direction bidirectional --output /tmp/passsync-sim-decisions.json
 jq empty /tmp/passsync-sim-decisions.json
 "$BIN_DIR/passsync" backup-list --backup-path /tmp/passsync-empty-backups
+Scripts/package_release.sh /tmp/passsync-release-artifacts
 ```
+
+Release artifacts created by `Scripts/package_release.sh` are unsigned. Treat them as local test artifacts until Developer ID signing, hardened runtime, notarization, and stapling are configured.
 
 Do not include real credentials, real TOTP seeds, backup passphrases, or backup files in issues, screenshots, examples, or CI artifacts.

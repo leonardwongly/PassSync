@@ -26,6 +26,8 @@ struct PassSyncCLI {
         switch command {
         case "help", "--help", "-h":
             print(usage)
+        case "version", "--version":
+            print("passsync \(PassSyncVersion.current)")
         case "preflight":
             try preflight(args)
         case "doctor":
@@ -815,6 +817,7 @@ struct PassSyncCLI {
     passsync - one-time password sync between 1Password and Apple Passwords
 
     Commands:
+      passsync version
       passsync preflight [--op-path PATH]
       passsync doctor [--op-path PATH] [--vault VAULT] [--backup-path PATH] [--app-bundle PATH]
       passsync examples list|show NAME|write NAME --output PATH

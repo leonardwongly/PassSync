@@ -46,7 +46,8 @@ PassSync is not a complete password-manager migration tool. These are the curren
 - **Continuous sync is not implemented.** v1 is one-time plan/apply only. It does not watch for changes or run in the background.
 - **Field-level conflict merge is decision-file based.** The CLI can apply reviewed per-field merge decisions from JSON decision files, but the interactive CLI prompt is still per-record and the SwiftUI app can export but not yet edit/import/apply decision files.
 - **Only website/app login records are in scope.** Secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, custom item types, and arbitrary custom fields are not synced.
-- **The native macOS app is local-build only.** A SwiftUI app target exists, but signing, notarization, releases, auto-update, and installer packaging are not implemented.
+- **The native macOS app is local-build only.** A SwiftUI app target exists and unsigned release archives can be created locally, but Developer ID signing, notarization, auto-update, and installer packaging are not implemented.
+- **Release artifacts are unsigned.** `Scripts/package_release.sh` creates local unsigned archives with checksums. Public distribution still requires Developer ID signing and notarization.
 - **Restore is provider-visible login recovery only.** Restore can plan/apply backed-up website/app login records for one provider at a time. It still blocks passkey evidence and Apple-destination TOTP unless explicitly allowed as password-only.
 - **Restore verification is provider-visible only.** `restore-verify` checks backed-up website/app login records against the selected provider, but it cannot prove passkey private key material, Apple verification-code entries, or iCloud Keychain propagation.
 - **Audit receipts are not a tamper-proof log.** Receipts are local JSON files for operator evidence. They are not signed, notarized, append-only, or stored in a hardened database.
@@ -168,6 +169,7 @@ Inspect available commands:
 
 ```sh
 swift run passsync help
+swift run passsync version
 ```
 
 List and inspect offline examples:
@@ -386,6 +388,24 @@ PassSync supports all three v1 one-time sync modes:
 
 The CLI does not continuously monitor changes. Continuous sync is intentionally left for v2.
 
+## Distribution
+
+Create an unsigned local release archive:
+
+```sh
+Scripts/package_release.sh
+```
+
+The script builds release-mode CLI and app artifacts, writes `passsync-<version>-macos-unsigned.tar.gz`, and emits a `.sha256` checksum file. The archive is intentionally labeled unsigned.
+
+Public macOS distribution still requires:
+
+- Developer ID signing certificate.
+- Hardened runtime configuration.
+- Notarization and stapling.
+- Release notes and upgrade guidance.
+- Optional Homebrew cask or installer packaging.
+
 ## Conflict Handling
 
 Default conflict behavior is `interactive`. During `sync --apply`, PassSync prompts for each conflict and lets you choose 1Password, Apple Passwords, skip, or abort. You can also choose a trust source explicitly:
@@ -443,11 +463,12 @@ Use that flag only after reviewing the plan.
 - **Restore UI hardening.** Add richer SwiftUI restore verification, restore history, and clearer pre-restore backup evidence.
 - **Doctor expansion.** Add more checks for `op` authentication edge cases, Keychain read/write probes, app signing state, and risky iCloud Keychain conditions.
 - **Audit hardening.** Sign or hash-chain receipts, add receipt inventory, and make post-apply verification failures more visible.
+- **Signed macOS distribution.** Add Developer ID signing, hardened runtime, notarization, stapling, and release automation.
 - **Malformed-input fixtures.** Add explicit invalid fixture cases for CLI parser and error-message regression tests.
 
 ### Mid Term
 
-- **Signed macOS app distribution.** Add signing, notarization, release packaging, and a documented install path for the SwiftUI app.
+- **Signed macOS app distribution.** Add notarized releases, a documented install path, and update distribution for the SwiftUI app.
 - **Richer SwiftUI workflows.** Add guided backup creation, per-field conflict resolution, restore history, and safer apply confirmations.
 - **Durable sync state.** Add a local SQLite state store for provider fingerprints, last-seen records, decisions, and audit history.
 - **Expanded item audits.** Detect secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, and custom fields, then report exactly what can and cannot be migrated.
