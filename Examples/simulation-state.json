@@ -1,0 +1,76 @@
+{
+  "appleRecords" : [
+    {
+      "hasPasskey" : false,
+      "modifiedAt" : "2026-06-12T12:00:00Z",
+      "notes" : "Synthetic Apple Passwords record",
+      "password" : "apple-dummy-password",
+      "provider" : "apple-passwords",
+      "sourceID" : "apple-existing-example",
+      "title" : "Existing Apple Example",
+      "username" : "conflict@example.test",
+      "urls" : [
+        "https://conflict.example.test/login"
+      ]
+    }
+  ],
+  "onePasswordRecords" : [
+    {
+      "hasPasskey" : false,
+      "modifiedAt" : "2026-06-13T12:00:00Z",
+      "notes" : "Synthetic 1Password record",
+      "password" : "onepassword-dummy-password",
+      "provider" : "1password",
+      "sourceID" : "onep-new-example",
+      "title" : "New 1Password Example",
+      "username" : "new@example.test",
+      "urls" : [
+        "https://new.example.test/login"
+      ],
+      "vaultID" : "PassSync-Test"
+    },
+    {
+      "hasPasskey" : false,
+      "modifiedAt" : "2026-06-13T13:00:00Z",
+      "notes" : "Synthetic conflict record",
+      "password" : "onepassword-conflict-password",
+      "provider" : "1password",
+      "sourceID" : "onep-conflict-example",
+      "title" : "Conflict Example",
+      "username" : "conflict@example.test",
+      "urls" : [
+        "https://conflict.example.test/login"
+      ],
+      "vaultID" : "PassSync-Test"
+    },
+    {
+      "hasPasskey" : true,
+      "modifiedAt" : "2026-06-13T14:00:00Z",
+      "notes" : "Synthetic passkey-bearing record; should be blocked",
+      "password" : "passkey-fallback-password",
+      "provider" : "1password",
+      "sourceID" : "onep-passkey-example",
+      "title" : "Passkey Example",
+      "username" : "passkey@example.test",
+      "urls" : [
+        "https://passkey.example.test/login"
+      ],
+      "vaultID" : "PassSync-Test"
+    },
+    {
+      "hasPasskey" : false,
+      "modifiedAt" : "2026-06-13T15:00:00Z",
+      "notes" : "Synthetic TOTP record; blocked for Apple unless password-only mode is explicit",
+      "password" : "totp-dummy-password",
+      "provider" : "1password",
+      "sourceID" : "onep-totp-example",
+      "title" : "TOTP Example",
+      "totpURI" : "otpauth://totp/passsync:totp@example.test?secret=JBSWY3DPEHPK3PXP&issuer=PassSync",
+      "username" : "totp@example.test",
+      "urls" : [
+        "https://totp.example.test/login"
+      ],
+      "vaultID" : "PassSync-Test"
+    }
+  ]
+}
