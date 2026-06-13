@@ -17,6 +17,9 @@ let package = Package(
             name: "PassSyncCore",
             swiftSettings: [
                 .enableExperimentalFeature("StrictConcurrency")
+            ],
+            linkerSettings: [
+                .linkedLibrary("sqlite3")
             ]
         ),
         .executableTarget(

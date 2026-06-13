@@ -22,6 +22,7 @@ The v1 safety posture is intentionally conservative:
 - `backup-migrate` rewrites readable backups with the current backup envelope.
 - Successful `sync --apply` and `restore --apply` write non-secret JSON receipts under `~/.passsync/audit`.
 - `backup-list` inventories local `.psbackup` files without decrypting backup contents.
+- `state-*` commands maintain a non-secret local SQLite metadata store for credential fingerprints, reviewed decision files, and apply receipts.
 
 Security and validation docs:
 
@@ -44,6 +45,7 @@ PassSync is not a complete password-manager migration tool. These are the curren
 ### Not Built Yet
 
 - **Continuous sync is not implemented.** v1 is one-time plan/apply only. It does not watch for changes or run in the background.
+- **The SQLite state store is metadata only.** `state-*` commands can record provider-visible credential fingerprints, reviewed decision files, and apply receipts, but the sync engine does not yet use this database as a continuous-change tracker or automatic conflict resolver.
 - **Field-level conflict merge is decision-file based.** The CLI and SwiftUI app can apply reviewed per-field merge decisions from JSON decision files, but the interactive CLI prompt is still per-record.
 - **Only website/app login records are in scope.** Secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, custom item types, and arbitrary custom fields are not synced.
 - **The native macOS app is local-build only.** A SwiftUI app target exists and unsigned release archives can be created locally, but Developer ID signing, notarization, auto-update, and installer packaging are not implemented.
@@ -320,6 +322,39 @@ swift run passsync audit-list --input "$HOME/.passsync/audit"
 
 The SwiftUI Recovery screen can scan both backup files and audit receipts.
 
+## State Store
+
+PassSync can maintain a local SQLite metadata database at:
+
+```sh
+$HOME/.passsync/state/passsync.sqlite
+```
+
+The state store is intentionally non-secret. It stores provider, host/username key, source ID, vault ID, title, URL count, TOTP/passkey booleans, modification/observation timestamps, raw provider fingerprints, decision-file hashes, and receipt hashes. It does not store passwords, TOTP seeds, notes, or backup passphrases.
+
+Record metadata from an offline simulation fixture:
+
+```sh
+swift run passsync state-record-simulation \
+  --input Examples/simulation-state.json
+```
+
+Record metadata from a reviewed decision file or apply receipt:
+
+```sh
+swift run passsync state-record-decision --input /tmp/passsync-decisions.json
+swift run passsync state-record-receipt --input "$HOME/.passsync/audit/passsync-sync-example.receipt.json"
+```
+
+Inspect the database:
+
+```sh
+swift run passsync state-summary
+swift run passsync state-list-credentials --limit 25
+```
+
+Use `--state-path /tmp/passsync-state.sqlite` for isolated tests. The state store is groundwork for safer future sync workflows; it does not enable continuous sync in v1.
+
 ## Simulation
 
 Use `simulate` to test planning and apply behavior without touching 1Password, Apple Passwords, Keychain, or backups. Simulation reads a JSON state file and, with `--apply`, writes a new output state file. The input is never modified in place.
@@ -476,6 +511,7 @@ Use that flag only after reviewing the plan.
 - **SwiftUI decision workflow hardening.** Add richer validation, batch controls, and clearer warnings when a decision file does not match the current plan.
 - **Restore UI hardening.** Add richer SwiftUI restore verification, restore history, and clearer pre-restore backup evidence.
 - **Doctor expansion.** Add more checks for risky iCloud Keychain conditions and optional deeper provider probes.
+- **State-store hardening.** Connect more live apply and review workflows to the non-secret SQLite metadata store and add schema migration tests before using it for background sync.
 - **Audit hardening.** Sign or hash-chain receipts and make post-apply verification failures more visible.
 - **Signed macOS distribution.** Add Developer ID signing, hardened runtime, notarization, stapling, and release automation.
 - **Malformed-input hardening.** Expand negative fixtures into end-to-end CLI stderr/exit-code regression tests.
@@ -484,7 +520,7 @@ Use that flag only after reviewing the plan.
 
 - **Signed macOS app distribution.** Add notarized releases, a documented install path, and update distribution for the SwiftUI app.
 - **Richer SwiftUI workflows.** Add guided backup creation, per-field conflict resolution, restore history, and safer apply confirmations.
-- **Durable sync state.** Add a local SQLite state store for provider fingerprints, last-seen records, decisions, and audit history.
+- **Durable sync state integration.** Use the local SQLite metadata store for last-seen provider fingerprints, decision history, and audit history during review workflows.
 - **Expanded item audits.** Detect secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, and custom fields, then report exactly what can and cannot be migrated.
 - **Manual passkey/TOTP migration guides.** Add account-level checklists for records that require provider-supported Credential Exchange or manual reenrollment.
 

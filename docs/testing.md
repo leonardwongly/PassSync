@@ -67,6 +67,23 @@ swift run passsync simulate \
 
 Decision files are redacted. They are intended to capture review choices, not credential values.
 
+Record non-secret metadata from the simulation fixture into an isolated SQLite state store:
+
+```sh
+swift run passsync state-record-simulation \
+  --input Examples/simulation-state.json \
+  --state-path /tmp/passsync-test-state.sqlite
+
+swift run passsync state-summary \
+  --state-path /tmp/passsync-test-state.sqlite
+
+swift run passsync state-list-credentials \
+  --state-path /tmp/passsync-test-state.sqlite \
+  --limit 10
+```
+
+State-store commands must not write passwords, TOTP seeds, notes, backup passphrases, or decrypted backup payloads.
+
 ## Level 2: Local Readiness Checks
 
 Run preflight for basic tool availability:
@@ -197,6 +214,10 @@ jq empty /tmp/passsync-sim-decisions.json
 mkdir -p /tmp/passsync-empty-audit
 "$BIN_DIR/passsync" audit-list --input /tmp/passsync-empty-audit
 "$BIN_DIR/passsync" doctor --op-path /bin/echo --audit-path /tmp/passsync-empty-audit --release-script Scripts/package_release.sh
+rm -f /tmp/passsync-ci-state.sqlite
+"$BIN_DIR/passsync" state-record-simulation --input Examples/simulation-state.json --state-path /tmp/passsync-ci-state.sqlite
+"$BIN_DIR/passsync" state-summary --state-path /tmp/passsync-ci-state.sqlite
+"$BIN_DIR/passsync" state-list-credentials --state-path /tmp/passsync-ci-state.sqlite --limit 5
 Scripts/package_release.sh /tmp/passsync-release-artifacts
 ```
 

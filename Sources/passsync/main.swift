@@ -48,6 +48,16 @@ struct PassSyncCLI {
             try backupMigrate(args)
         case "audit-list":
             try auditList(args)
+        case "state-summary":
+            try stateSummary(args)
+        case "state-list-credentials":
+            try stateListCredentials(args)
+        case "state-record-simulation":
+            try stateRecordSimulation(args)
+        case "state-record-decision":
+            try stateRecordDecision(args)
+        case "state-record-receipt":
+            try stateRecordReceipt(args)
         case "restore-check":
             try restoreCheck(args)
         case "restore-verify":
@@ -329,6 +339,91 @@ struct PassSyncCLI {
                 print("[WARN] \(item.path)")
                 print("  - error: \(item.error ?? "Could not inspect receipt.")")
             }
+        }
+    }
+
+    private static func stateSummary(_ args: [String]) throws {
+        let options = try CLIOptions(args: args)
+        let summary = try stateStore(options).summary()
+        if options.json {
+            printJSON(summary)
+            return
+        }
+
+        print("PassSync state store")
+        print("- path: \(summary.path)")
+        print("- credentials: \(summary.credentialCount)")
+        print("- decision files: \(summary.decisionFileCount)")
+        print("- receipts: \(summary.receiptCount)")
+        print("- latest observation: \(summary.latestObservationAt?.description ?? "none")")
+    }
+
+    private static func stateListCredentials(_ args: [String]) throws {
+        let options = try CLIOptions(args: args)
+        let snapshots = try stateStore(options).credentialSnapshots(limit: options.limit)
+        if options.json {
+            printJSON(snapshots)
+            return
+        }
+
+        print("PassSync credential snapshots")
+        print("- count: \(snapshots.count)")
+        for snapshot in snapshots {
+            print("[\(snapshot.provider.rawValue)] \(snapshot.key)")
+            print("  - title: \(snapshot.title)")
+            print("  - urls: \(snapshot.urlCount)")
+            print("  - totp: \(snapshot.hasTOTP)")
+            print("  - passkey: \(snapshot.hasPasskey)")
+            print("  - observed: \(snapshot.observedAt)")
+        }
+    }
+
+    private static func stateRecordSimulation(_ args: [String]) throws {
+        let options = try CLIOptions(args: args)
+        guard let inputPath = options.inputPath else {
+            throw PassSyncError.invalidArguments("state-record-simulation requires --input <path>.")
+        }
+
+        let state = try readSimulationState(path: inputPath)
+        let store = stateStore(options)
+        let count = try store.recordCredentials(state.onePasswordRecords + state.appleRecords)
+        if options.json {
+            printJSON(try store.summary())
+        } else {
+            print("Recorded \(count) credential snapshot(s) from \(inputPath).")
+            print("State store: \(store.path)")
+        }
+    }
+
+    private static func stateRecordDecision(_ args: [String]) throws {
+        let options = try CLIOptions(args: args)
+        guard let inputPath = options.inputPath else {
+            throw PassSyncError.invalidArguments("state-record-decision requires --input <path>.")
+        }
+
+        let store = stateStore(options)
+        try store.recordDecisionFile(path: inputPath)
+        if options.json {
+            printJSON(try store.summary())
+        } else {
+            print("Recorded decision file metadata from \(inputPath).")
+            print("State store: \(store.path)")
+        }
+    }
+
+    private static func stateRecordReceipt(_ args: [String]) throws {
+        let options = try CLIOptions(args: args)
+        guard let inputPath = options.inputPath else {
+            throw PassSyncError.invalidArguments("state-record-receipt requires --input <path>.")
+        }
+
+        let store = stateStore(options)
+        try store.recordReceipt(path: inputPath)
+        if options.json {
+            printJSON(try store.summary())
+        } else {
+            print("Recorded receipt metadata from \(inputPath).")
+            print("State store: \(store.path)")
         }
     }
 
@@ -740,6 +835,14 @@ struct PassSyncCLI {
         "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/audit"
     }
 
+    private static func defaultStatePath() -> String {
+        "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/state/passsync.sqlite"
+    }
+
+    private static func stateStore(_ options: CLIOptions) -> StateStore {
+        StateStore(path: options.statePath ?? defaultStatePath())
+    }
+
     private static func postApplySyncVerification(
         options: CLIOptions,
         syncOptions: SyncOptions,
@@ -861,6 +964,11 @@ struct PassSyncCLI {
       passsync backup-list [--backup-path FILE_OR_DIR] [--json]
       passsync backup-migrate --input PATH --output PATH [--json]
       passsync audit-list [--input FILE_OR_DIR] [--json]
+      passsync state-summary [--state-path PATH] [--json]
+      passsync state-list-credentials [--state-path PATH] [--limit N] [--json]
+      passsync state-record-simulation --input PATH [--state-path PATH] [--json]
+      passsync state-record-decision --input PATH [--state-path PATH] [--json]
+      passsync state-record-receipt --input PATH [--state-path PATH] [--json]
       passsync restore-check --backup-path PATH
       passsync restore-verify --backup-path PATH --to 1password|apple-passwords [options]
       passsync restore-plan --backup-path PATH --to 1password|apple-passwords [options]
@@ -873,12 +981,14 @@ struct PassSyncCLI {
       --vault VALUE              1Password vault name or ID.
       --backup-path PATH         Encrypted backup path. Required for restore-check; defaulted for backup/apply.
       --audit-path PATH          Audit receipt directory for doctor checks.
+      --state-path PATH          Durable non-secret SQLite state store path.
       --to VALUE                 Restore target: 1password|apple-passwords.
       --input PATH               Simulation input state JSON or backup-migrate source.
       --output PATH              Simulation apply output, backup-migrate destination, or dry-run decision-file export path.
       --decision-file PATH       Apply reviewed decisions from a decision file to a freshly built plan or simulation.
       --app-bundle PATH          App bundle path for doctor checks.
       --release-script PATH      Release script path for doctor checks.
+      --limit N                  Maximum credential snapshots for state-list-credentials. Default: 100.
       --op-path PATH             Path to op. Default: /opt/homebrew/bin/op.
       --json                     Print redacted JSON plan.
       --allow-password-only-for-unsupported-security-material
@@ -900,6 +1010,7 @@ private struct CLIOptions {
     var vault: String?
     var backupPath: String?
     var auditPath: String?
+    var statePath: String?
     var restoreTarget: RestoreTarget?
     var inputPath: String?
     var outputPath: String?
@@ -910,6 +1021,7 @@ private struct CLIOptions {
     var json = false
     var allowPasswordOnly = false
     var didSetDirection = false
+    var limit = 100
 
     init(args: [String]) throws {
         var index = args.startIndex
@@ -929,6 +1041,8 @@ private struct CLIOptions {
                 backupPath = try Self.value(after: arg, in: args, index: &index)
             case "--audit-path":
                 auditPath = try Self.value(after: arg, in: args, index: &index)
+            case "--state-path":
+                statePath = try Self.value(after: arg, in: args, index: &index)
             case "--to":
                 restoreTarget = try Self.value(after: arg, in: args, index: &index).parse(RestoreTarget.self)
             case "--input":
@@ -941,6 +1055,12 @@ private struct CLIOptions {
                 appBundlePath = try Self.value(after: arg, in: args, index: &index)
             case "--release-script":
                 releaseScriptPath = try Self.value(after: arg, in: args, index: &index)
+            case "--limit":
+                let value = try Self.value(after: arg, in: args, index: &index)
+                guard let parsed = Int(value), parsed > 0 else {
+                    throw PassSyncError.invalidArguments("--limit requires a positive integer.")
+                }
+                limit = parsed
             case "--op-path":
                 opPath = try Self.value(after: arg, in: args, index: &index)
             case "--json":
