@@ -1,0 +1,9 @@
+{
+  "format": "passsync.encrypted-backup.v2",
+  "kdf": "unsupported-kdf",
+  "iterations": 1,
+  "salt": "AA==",
+  "nonce": "AA==",
+  "ciphertext": "AA==",
+  "tag": "AA=="
+}

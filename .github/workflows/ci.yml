@@ -39,6 +39,9 @@ jobs:
           "$BIN_DIR/passsync" examples list
           "$BIN_DIR/passsync" examples show minimal > /tmp/passsync-minimal.json
           jq empty /tmp/passsync-minimal.json
+          jq empty Examples/malformed-simulation-state.json
+          jq empty Examples/malformed-decision-file.json
+          jq empty Examples/malformed-backup-envelope.json
           mkdir -p /tmp/passsync-empty-backups
           "$BIN_DIR/passsync" backup-list --backup-path /tmp/passsync-empty-backups
           mkdir -p /tmp/passsync-empty-audit

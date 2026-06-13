@@ -180,6 +180,8 @@ swift run passsync examples show conflict
 swift run passsync examples write bidirectional --output /tmp/passsync-bidirectional.json
 ```
 
+The `Examples/malformed-*.json` files are intentional negative fixtures used by tests for parser and fail-closed error handling. Do not use them as simulation inputs except when testing failures.
+
 Dry-run a one-way sync from 1Password to Apple Passwords:
 
 ```sh
@@ -474,7 +476,7 @@ Use that flag only after reviewing the plan.
 - **Doctor expansion.** Add more checks for `op` authentication edge cases, Keychain read/write probes, app signing state, and risky iCloud Keychain conditions.
 - **Audit hardening.** Sign or hash-chain receipts and make post-apply verification failures more visible.
 - **Signed macOS distribution.** Add Developer ID signing, hardened runtime, notarization, stapling, and release automation.
-- **Malformed-input fixtures.** Add explicit invalid fixture cases for CLI parser and error-message regression tests.
+- **Malformed-input hardening.** Expand negative fixtures into end-to-end CLI stderr/exit-code regression tests.
 
 ### Mid Term
 

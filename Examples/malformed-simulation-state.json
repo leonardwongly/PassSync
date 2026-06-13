@@ -1,0 +1,12 @@
+{
+  "onePasswordRecords": [
+    {
+      "provider": "1password",
+      "title": "Malformed Missing Password",
+      "username": "broken@example.test",
+      "urls": ["https://broken.example.test/login"],
+      "hasPasskey": false
+    }
+  ],
+  "appleRecords": []
+}

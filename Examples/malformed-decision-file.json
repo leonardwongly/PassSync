@@ -1,0 +1,21 @@
+{
+  "format": "passsync.plan-decisions.v1",
+  "generatedAt": "2026-06-13T00:00:00Z",
+  "planGeneratedAt": "2026-06-13T00:00:00Z",
+  "direction": "bidirectional",
+  "truthSource": "none",
+  "conflictPolicy": "interactive",
+  "decisions": [
+    {
+      "key": {
+        "host": "example.test",
+        "username": "broken@example.test"
+      },
+      "originalKind": "conflict",
+      "decision": "silentlyOverwriteEverything",
+      "reason": "Invalid fixture for decision parser tests.",
+      "fieldDiffs": [],
+      "fieldDecisions": []
+    }
+  ]
+}
