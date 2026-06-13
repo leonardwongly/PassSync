@@ -34,6 +34,8 @@ struct PassSyncCLI {
             try doctor(args)
         case "examples":
             try examples(args)
+        case "item-audit":
+            try itemAudit(args)
         case "plan":
             try plan(args, apply: false, requireDirection: true)
         case "sync":
@@ -148,6 +150,28 @@ struct PassSyncCLI {
             print("Wrote \(name) example to \(outputPath).")
         default:
             throw PassSyncError.invalidArguments("Unknown examples subcommand \(subcommand). Use list, show, or write.")
+        }
+    }
+
+    private static func itemAudit(_ args: [String]) throws {
+        let options = try CLIOptions(args: args)
+        let report = try OnePasswordClient(runner: ProcessRunner(), opPath: options.opPath).auditItemCategories(vault: options.vault)
+        if options.json {
+            printJSON(report)
+            return
+        }
+
+        print("PassSync item category audit")
+        print("- provider: \(report.provider.rawValue)")
+        print("- total items: \(report.totalCount)")
+        print("- in-scope website/app logins: \(report.supportedLoginCount)")
+        print("- out-of-scope items: \(report.unsupportedCount)")
+        for note in report.notes {
+            print("- note: \(note)")
+        }
+        for category in report.categories {
+            let mark = category.status == .inScope ? "IN-SCOPE" : "OUT-OF-SCOPE"
+            print("[\(mark)] \(category.category): \(category.count) - \(category.detail)")
         }
     }
 
@@ -1031,6 +1055,7 @@ struct PassSyncCLI {
       passsync preflight [--op-path PATH]
       passsync doctor [--op-path PATH] [--vault VAULT] [--backup-path PATH] [--app-bundle PATH]
       passsync examples list|show NAME|write NAME --output PATH
+      passsync item-audit [--op-path PATH] [--vault VAULT] [--json]
       passsync plan --direction 1p-to-apple|apple-to-1p|bidirectional [options]
       passsync sync --direction 1p-to-apple|apple-to-1p|bidirectional [options] [--apply]
       passsync simulate --input PATH --direction 1p-to-apple|apple-to-1p|bidirectional [options] [--apply --output PATH]

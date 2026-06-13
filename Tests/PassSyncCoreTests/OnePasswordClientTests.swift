@@ -56,6 +56,29 @@ import Testing
     #expect(String(data: runner.calls[0].stdin ?? Data(), encoding: .utf8)?.contains("secret-value") == true)
 }
 
+@Test func onePasswordItemAuditUsesSummaryListOnly() throws {
+    let runner = MockRunner(results: [
+        ProcessResult(stdout: Data("""
+        [
+          {"id":"login-1","title":"Login","category":"LOGIN"},
+          {"id":"note-1","title":"Private Note","category":"SECURE_NOTE"},
+          {"id":"ssh-1","title":"SSH Key","category":"SSH_KEY"}
+        ]
+        """.utf8), stderr: Data(), status: 0)
+    ])
+    let client = OnePasswordClient(runner: runner, opPath: "/mock/op")
+
+    let report = try client.auditItemCategories(vault: "Private")
+
+    #expect(runner.calls.count == 1)
+    #expect(runner.calls[0].arguments == ["item", "list", "--format", "json", "--vault", "Private"])
+    #expect(report.totalCount == 3)
+    #expect(report.supportedLoginCount == 1)
+    #expect(report.unsupportedCount == 2)
+    #expect(report.categories.contains { $0.category == "SECURE_NOTE" })
+    #expect(report.categories.contains { $0.category == "SSH_KEY" })
+}
+
 @Test func syncExecutorPassesVaultToOnePasswordMutations() throws {
     let onePassword = MockOnePasswordManager()
     let apple = MockApplePasswordsManager()

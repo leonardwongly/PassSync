@@ -27,7 +27,7 @@ public struct OnePasswordClient<Runner: ProcessRunning>: OnePasswordManaging {
         }
 
         let listResult = try checkedRun(listArguments)
-        let summaries = try decoder.decode([OnePasswordItemSummary].self, from: listResult.stdout)
+        let summaries = try decoder.decode([OnePasswordItemListSummary].self, from: listResult.stdout)
 
         var records: [CredentialRecord] = []
         for summary in summaries {
@@ -42,6 +42,16 @@ public struct OnePasswordClient<Runner: ProcessRunning>: OnePasswordManaging {
             }
         }
         return records
+    }
+
+    public func auditItemCategories(vault: String?) throws -> ItemCategoryAuditReport {
+        var listArguments = ["item", "list", "--format", "json"]
+        if let vault {
+            listArguments += ["--vault", vault]
+        }
+        let listResult = try checkedRun(listArguments)
+        let summaries = try decoder.decode([OnePasswordItemListSummary].self, from: listResult.stdout)
+        return ItemCategoryAuditor().auditOnePasswordSummaries(summaries)
     }
 
     public func create(_ record: CredentialRecord, vault: String?) throws {
@@ -157,10 +167,6 @@ public struct OnePasswordClient<Runner: ProcessRunning>: OnePasswordManaging {
     }
 }
 
-private struct OnePasswordItemSummary: Decodable {
-    var id: String
-}
-
 private struct OnePasswordItemDetail: Decodable {
     var id: String
     var title: String
@@ -223,4 +229,3 @@ private enum JSONEvidenceScanner {
         return false
     }
 }
-

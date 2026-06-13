@@ -67,6 +67,14 @@ swift run passsync simulate \
 
 Decision files are redacted. They are intended to capture review choices, not credential values.
 
+Audit item categories without fetching 1Password item details:
+
+```sh
+swift run passsync item-audit --vault PassSync-Test
+```
+
+The audit reports category counts only. It does not reveal item titles or secrets.
+
 Record non-secret metadata from the simulation fixture into an isolated SQLite state store:
 
 ```sh

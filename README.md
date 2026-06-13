@@ -47,7 +47,7 @@ PassSync is not a complete password-manager migration tool. These are the curren
 - **Continuous sync is not implemented.** v1 is one-time plan/apply only. It does not watch for changes or run in the background.
 - **The SQLite state store is metadata only.** `--record-state` and `state-*` commands can record provider-visible credential fingerprints, reviewed decision files, and apply receipts, but the sync engine does not yet use this database as a continuous-change tracker or automatic conflict resolver.
 - **Field-level conflict merge is decision-file based.** The CLI and SwiftUI app can apply reviewed per-field merge decisions from JSON decision files, but the interactive CLI prompt is still per-record.
-- **Only website/app login records are in scope.** Secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, custom item types, and arbitrary custom fields are not synced.
+- **Only website/app login records are in sync scope.** `item-audit` can count unsupported 1Password item categories, but secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, custom item types, and arbitrary custom fields are not synced.
 - **The native macOS app is local-build only.** A SwiftUI app target exists and unsigned release archives can be created locally, but Developer ID signing, notarization, auto-update, and installer packaging are not implemented.
 - **Release artifacts are unsigned.** `Scripts/package_release.sh` creates local unsigned archives with checksums. Public distribution still requires Developer ID signing and notarization.
 - **Restore is provider-visible login recovery only.** Restore can plan/apply backed-up website/app login records for one provider at a time. It still blocks passkey evidence and Apple-destination TOTP unless explicitly allowed as password-only.
@@ -185,6 +185,14 @@ swift run passsync examples write bidirectional --output /tmp/passsync-bidirecti
 ```
 
 The `Examples/malformed-*.json` files are intentional negative fixtures used by tests for parser and fail-closed error handling. Do not use them as simulation inputs except when testing failures.
+
+Audit 1Password item categories without fetching item details:
+
+```sh
+swift run passsync item-audit --vault Private
+```
+
+`item-audit` reports counts by category. It treats `LOGIN` as v1 sync scope and reports other categories such as secure notes, credit cards, identities, SSH keys, and software licenses as out of scope.
 
 Dry-run a one-way sync from 1Password to Apple Passwords:
 
@@ -541,7 +549,7 @@ Use that flag only after reviewing the plan.
 - **Signed macOS app distribution.** Add notarized releases, a documented install path, and update distribution for the SwiftUI app.
 - **Richer SwiftUI workflows.** Add guided backup creation, per-field conflict resolution, restore history, and safer apply confirmations.
 - **Durable sync state integration.** Use the local SQLite metadata store for richer last-seen comparisons and decision history during review workflows.
-- **Expanded item audits.** Detect secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, and custom fields, then report exactly what can and cannot be migrated.
+- **Expanded item audits.** Add Apple-side category coverage when safe APIs are available, and add richer guidance for unsupported 1Password categories.
 - **Manual passkey/TOTP migration guides.** Add account-level checklists for records that require provider-supported Credential Exchange or manual reenrollment.
 
 ### Longer Term
