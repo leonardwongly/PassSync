@@ -21,6 +21,8 @@ struct ContentView: View {
                 LivePlanView()
             case .restore:
                 RestoreView()
+            case .recovery:
+                RecoveryView()
             case .conflicts:
                 ConflictReviewView()
             case .limitations:
@@ -324,6 +326,96 @@ private struct ConflictReviewView: View {
             }
             .padding(28)
             .frame(maxWidth: 1040, alignment: .leading)
+        }
+    }
+}
+
+private struct RecoveryView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                HeaderView(
+                    title: "Recovery",
+                    subtitle: "Backup inventory and restore evidence from local PassSync files."
+                )
+
+                GroupBox("Backup Inventory") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("Backup path", text: $model.backupInventoryPath)
+                        Button {
+                            model.loadBackupInventory()
+                        } label: {
+                            Label("Scan Backups", systemImage: "externaldrive.badge.magnifyingglass")
+                        }
+                    }
+                }
+
+                if let message = model.recoveryMessage {
+                    MessageBanner(message: message, style: .info)
+                }
+
+                if let error = model.recoveryError {
+                    MessageBanner(message: error, style: .error)
+                }
+
+                if model.backupInventory.isEmpty {
+                    ContentUnavailableView(
+                        "No Backups Loaded",
+                        systemImage: "externaldrive",
+                        description: Text("Scan a backup directory or a single .psbackup file.")
+                    )
+                } else {
+                    ForEach(model.backupInventory) { item in
+                        BackupInventoryRow(item: item)
+                    }
+                }
+            }
+            .padding(28)
+            .frame(maxWidth: 1040, alignment: .leading)
+        }
+    }
+}
+
+private struct BackupInventoryRow: View {
+    var item: BackupInventoryItem
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(item.path)
+                    .font(.headline)
+                    .textSelection(.enabled)
+                HStack {
+                    Label("\(item.fileSize) bytes", systemImage: "doc")
+                    if let modifiedAt = item.modifiedAt {
+                        Label(modifiedAt.formatted(date: .abbreviated, time: .shortened), systemImage: "clock")
+                    }
+                }
+                .foregroundStyle(.secondary)
+                if let envelope = item.envelope {
+                    Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
+                        GridRow {
+                            Text("Format").foregroundStyle(.secondary)
+                            Text(envelope.format)
+                        }
+                        GridRow {
+                            Text("KDF").foregroundStyle(.secondary)
+                            Text(envelope.kdf)
+                        }
+                        GridRow {
+                            Text("Iterations").foregroundStyle(.secondary)
+                            Text("\(envelope.iterations)")
+                        }
+                    }
+                    .font(.subheadline)
+                } else {
+                    Label(item.error ?? "Could not inspect backup.", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

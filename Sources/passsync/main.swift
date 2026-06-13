@@ -40,6 +40,8 @@ struct PassSyncCLI {
             try simulate(args, apply: args.contains("--apply"))
         case "backup":
             try backup(args)
+        case "backup-list":
+            try backupList(args)
         case "backup-migrate":
             try backupMigrate(args)
         case "restore-check":
@@ -216,7 +218,24 @@ struct PassSyncCLI {
 
         let executor = SyncExecutor(onePassword: onePassword, applePasswords: apple)
         try executor.apply(plan: syncPlan, onePasswordVault: options.vault)
+        let verification = postApplySyncVerification(
+            options: options,
+            syncOptions: syncOptions,
+            decisionFilePath: options.decisionFilePath
+        )
+        let receipt = ApplyReceipt(
+            operation: .sync,
+            backupPath: backupPath,
+            decisionFilePath: options.decisionFilePath,
+            direction: syncPlan.direction,
+            truthSource: syncPlan.truthSource,
+            conflictPolicy: syncPlan.conflictPolicy,
+            plan: syncPlan,
+            postApplyVerification: verification
+        )
+        let receiptPath = try AuditLog().writeReceipt(receipt, directoryPath: defaultAuditPath())
         print("Sync applied.")
+        print("Apply receipt written: \(receiptPath)")
     }
 
     private static func backup(_ args: [String]) throws {
@@ -249,6 +268,33 @@ struct PassSyncCLI {
         print("- Apple records: \(payload.appleRecords.count)")
         for warning in payload.warnings {
             print("- warning: \(warning)")
+        }
+    }
+
+    private static func backupList(_ args: [String]) throws {
+        let options = try CLIOptions(args: args)
+        let path = options.backupPath ?? defaultBackupDirectory()
+        let items = BackupInventory().scan(path: path)
+        if options.json {
+            printJSON(items)
+            return
+        }
+
+        print("PassSync backup inventory")
+        print("- path: \(path)")
+        print("- backups: \(items.count)")
+        for item in items {
+            if let envelope = item.envelope {
+                print("[OK] \(item.path)")
+                print("  - size: \(item.fileSize) bytes")
+                print("  - modified: \(item.modifiedAt?.description ?? "unknown")")
+                print("  - format: \(envelope.format)")
+                print("  - kdf: \(envelope.kdf)")
+                print("  - iterations: \(envelope.iterations)")
+            } else {
+                print("[WARN] \(item.path)")
+                print("  - error: \(item.error ?? "Could not inspect backup envelope.")")
+            }
         }
     }
 
@@ -389,7 +435,27 @@ struct PassSyncCLI {
             plan: restorePlan,
             onePasswordVault: options.vault
         )
+        let verification = postApplyRestoreVerification(
+            backup: backup,
+            target: target,
+            options: options,
+            allowPasswordOnly: options.allowPasswordOnly
+        )
+        let receipt = ApplyReceipt(
+            operation: .restore,
+            backupPath: path,
+            safetyBackupPath: safetyBackupPath,
+            decisionFilePath: options.decisionFilePath,
+            direction: restorePlan.direction,
+            truthSource: restorePlan.truthSource,
+            conflictPolicy: restorePlan.conflictPolicy,
+            restoreTarget: target,
+            plan: restorePlan,
+            postApplyVerification: verification
+        )
+        let receiptPath = try AuditLog().writeReceipt(receipt, directoryPath: defaultAuditPath())
         print("Restore applied.")
+        print("Apply receipt written: \(receiptPath)")
     }
 
     private static func simulate(_ args: [String], apply: Bool) throws {
@@ -628,8 +694,83 @@ struct PassSyncCLI {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
         let stamp = formatter.string(from: Date()).replacingOccurrences(of: ":", with: "")
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return "\(home)/.passsync/backups/passsync-\(stamp).psbackup"
+        return "\(defaultBackupDirectory())/passsync-\(stamp).psbackup"
+    }
+
+    private static func defaultBackupDirectory() -> String {
+        "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups"
+    }
+
+    private static func defaultAuditPath() -> String {
+        "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/audit"
+    }
+
+    private static func postApplySyncVerification(
+        options: CLIOptions,
+        syncOptions: SyncOptions,
+        decisionFilePath: String?
+    ) -> PostApplyVerification {
+        do {
+            let onePassword = OnePasswordClient(runner: ProcessRunner(), opPath: options.opPath)
+            let apple = AppleKeychainClient()
+            let onePasswordRecords = try onePassword.fetchLogins(vault: options.vault)
+            let appleRecords = try apple.fetchLogins()
+            var plan = SyncPlanner().buildPlan(
+                onePasswordRecords: onePasswordRecords,
+                appleRecords: appleRecords,
+                options: syncOptions
+            )
+            if let decisionFilePath {
+                plan = PlanDecisionFiles.apply(
+                    try readDecisionFile(path: decisionFilePath),
+                    to: plan,
+                    allowPasswordOnlyForUnsupportedSecurityMaterial: options.allowPasswordOnly
+                )
+            }
+            return PostApplyVerification(
+                mutatingActionCount: plan.mutatingActions.count,
+                blockingActionCount: plan.actions.filter { $0.kind == .conflict || $0.kind == .unsupported }.count,
+                warningCount: plan.warnings.count,
+                notes: ["Post-apply sync verification rebuilt the plan from current provider state."]
+            )
+        } catch {
+            return PostApplyVerification(
+                mutatingActionCount: -1,
+                blockingActionCount: -1,
+                warningCount: 1,
+                notes: ["Post-apply sync verification failed: \(error)"]
+            )
+        }
+    }
+
+    private static func postApplyRestoreVerification(
+        backup: BackupPayload,
+        target: RestoreTarget,
+        options: CLIOptions,
+        allowPasswordOnly: Bool
+    ) -> PostApplyVerification {
+        do {
+            let current = try fetchCurrentRecords(target: target, options: options)
+            let report = RestoreVerifier().verify(
+                backup: backup,
+                currentRecords: current,
+                target: target,
+                allowPasswordOnlyForUnsupportedSecurityMaterial: allowPasswordOnly
+            )
+            return PostApplyVerification(
+                mutatingActionCount: report.failureCount,
+                blockingActionCount: report.failureCount,
+                warningCount: report.warningCount,
+                notes: ["Post-apply restore verification \(report.passed ? "passed" : "found restore mismatches")."]
+            )
+        } catch {
+            return PostApplyVerification(
+                mutatingActionCount: -1,
+                blockingActionCount: -1,
+                warningCount: 1,
+                notes: ["Post-apply restore verification failed: \(error)"]
+            )
+        }
     }
 
     private static func readSimulationState(path: String) throws -> SimulationState {
@@ -681,6 +822,7 @@ struct PassSyncCLI {
       passsync sync --direction 1p-to-apple|apple-to-1p|bidirectional [options] [--apply]
       passsync simulate --input PATH --direction 1p-to-apple|apple-to-1p|bidirectional [options] [--apply --output PATH]
       passsync backup [--backup-path PATH] [--vault VAULT]
+      passsync backup-list [--backup-path FILE_OR_DIR] [--json]
       passsync backup-migrate --input PATH --output PATH [--json]
       passsync restore-check --backup-path PATH
       passsync restore-verify --backup-path PATH --to 1password|apple-passwords [options]

@@ -15,6 +15,9 @@ final class AppModel: ObservableObject {
     @Published var restoreError: String?
     @Published var conflictReviewMessage: String?
     @Published var conflictReviewError: String?
+    @Published var recoveryMessage: String?
+    @Published var recoveryError: String?
+    @Published var backupInventory: [BackupInventoryItem] = []
     @Published var isRunningSimulation = false
     @Published var isRunningLivePlan = false
     @Published var isApplyingLivePlan = false
@@ -43,6 +46,7 @@ final class AppModel: ObservableObject {
     @Published var restorePassphrase = ""
     @Published var restoreAllowPasswordOnly = false
     @Published var decisionOutputPath = "/tmp/passsync-decisions.json"
+    @Published var backupInventoryPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups"
 
     private var liveSnapshot: (onePassword: [CredentialRecord], apple: [CredentialRecord])?
     private var restoreSnapshot: [CredentialRecord]?
@@ -333,6 +337,14 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func loadBackupInventory() {
+        let path = backupInventoryPath
+        let items = BackupInventory().scan(path: path)
+        backupInventory = items
+        recoveryError = nil
+        recoveryMessage = "Found \(items.count) backup item(s)."
+    }
+
     private func writeSimulationState(_ state: SimulationState, path: String) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -353,6 +365,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case simulation
     case livePlan
     case restore
+    case recovery
     case conflicts
     case limitations
 
@@ -368,6 +381,8 @@ enum AppSection: String, CaseIterable, Identifiable {
             return "Live Plan"
         case .restore:
             return "Restore"
+        case .recovery:
+            return "Recovery"
         case .conflicts:
             return "Conflicts"
         case .limitations:
@@ -385,6 +400,8 @@ enum AppSection: String, CaseIterable, Identifiable {
             return "key"
         case .restore:
             return "clock.arrow.circlepath"
+        case .recovery:
+            return "externaldrive.badge.checkmark"
         case .conflicts:
             return "rectangle.split.2x1"
         case .limitations:

@@ -20,6 +20,8 @@ The v1 safety posture is intentionally conservative:
 - Encrypted backups use AES-GCM with PBKDF2-HMAC-SHA256 key derivation. Older PassSync backups using the v1 SHA-256 iteration envelope remain readable.
 - `restore-verify` compares current provider state with a backup and exits non-zero when records are missing, different, or unsupported.
 - `backup-migrate` rewrites readable backups with the current backup envelope.
+- Successful `sync --apply` and `restore --apply` write non-secret JSON receipts under `~/.passsync/audit`.
+- `backup-list` inventories local `.psbackup` files without decrypting backup contents.
 
 Security and validation docs:
 
@@ -47,6 +49,7 @@ PassSync is not a complete password-manager migration tool. These are the curren
 - **The native macOS app is local-build only.** A SwiftUI app target exists, but signing, notarization, releases, auto-update, and installer packaging are not implemented.
 - **Restore is provider-visible login recovery only.** Restore can plan/apply backed-up website/app login records for one provider at a time. It still blocks passkey evidence and Apple-destination TOTP unless explicitly allowed as password-only.
 - **Restore verification is provider-visible only.** `restore-verify` checks backed-up website/app login records against the selected provider, but it cannot prove passkey private key material, Apple verification-code entries, or iCloud Keychain propagation.
+- **Audit receipts are not a tamper-proof log.** Receipts are local JSON files for operator evidence. They are not signed, notarized, append-only, or stored in a hardened database.
 
 ### Deliberately Not Attempted
 
@@ -256,6 +259,12 @@ swift run passsync backup-migrate \
   --output "$HOME/.passsync/backups/migrated.psbackup"
 ```
 
+List known local backups without decrypting them:
+
+```sh
+swift run passsync backup-list --backup-path "$HOME/.passsync/backups"
+```
+
 Backups include credentials visible to the 1Password CLI and macOS Keychain internet-password APIs. Provider-managed passkey private key material is not exported through those APIs.
 
 Plan a restore from backup without mutating anything:
@@ -286,6 +295,14 @@ swift run passsync restore \
 ```
 
 Restore apply creates a second pre-restore encrypted backup of the current target provider state before mutating anything.
+
+Successful sync and restore applies write a local receipt under:
+
+```sh
+$HOME/.passsync/audit
+```
+
+Receipts include action keys, action kinds, backup paths, and post-apply verification summaries. They do not include passwords or TOTP seeds.
 
 ## Simulation
 
@@ -423,9 +440,9 @@ Use that flag only after reviewing the plan.
 ### Near Term
 
 - **SwiftUI decision workflow.** Add native editing, import, validation, and apply for decision files instead of export-only review.
-- **Restore UI hardening.** Add richer SwiftUI restore review, restore verification, restore history, and clearer pre-restore backup evidence.
+- **Restore UI hardening.** Add richer SwiftUI restore verification, restore history, and clearer pre-restore backup evidence.
 - **Doctor expansion.** Add more checks for `op` authentication edge cases, Keychain read/write probes, app signing state, and risky iCloud Keychain conditions.
-- **Restore audit trail.** Record restore verification results, pre-restore backup paths, and apply receipts.
+- **Audit hardening.** Sign or hash-chain receipts, add receipt inventory, and make post-apply verification failures more visible.
 - **Malformed-input fixtures.** Add explicit invalid fixture cases for CLI parser and error-message regression tests.
 
 ### Mid Term

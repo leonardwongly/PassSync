@@ -129,6 +129,12 @@ swift run passsync restore-check \
   --backup-path "$HOME/.passsync/backups/pre-apply-test.psbackup"
 ```
 
+Inventory backups without decrypting them:
+
+```sh
+swift run passsync backup-list --backup-path "$HOME/.passsync/backups"
+```
+
 Apply only in the isolated environment:
 
 ```sh
@@ -152,6 +158,8 @@ swift run passsync restore-verify \
 ```
 
 `restore-verify` exits non-zero if backup records are missing, different, unsupported, or otherwise not restored in the target provider.
+
+Successful apply commands write non-secret receipts under `~/.passsync/audit`. Inspect those receipts after isolated live apply to confirm the backup path, action count, and post-apply verification summary.
 
 ## Backup Migration Test
 
@@ -182,6 +190,7 @@ BIN_DIR="$(swift build --show-bin-path)"
 jq empty /tmp/passsync-minimal.json
 "$BIN_DIR/passsync" simulate --input Examples/simulation-state.json --direction bidirectional --output /tmp/passsync-sim-decisions.json
 jq empty /tmp/passsync-sim-decisions.json
+"$BIN_DIR/passsync" backup-list --backup-path /tmp/passsync-empty-backups
 ```
 
 Do not include real credentials, real TOTP seeds, backup passphrases, or backup files in issues, screenshots, examples, or CI artifacts.
