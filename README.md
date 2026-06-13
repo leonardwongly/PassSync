@@ -15,6 +15,7 @@ The v1 safety posture is intentionally conservative:
 - Conflicts default to interactive/fail-closed behavior.
 - Passkey-bearing records are detected and blocked because the available CLI/Keychain password APIs cannot safely migrate passkey private key material.
 - TOTP secrets are synced into 1Password when available, but Apple Passwords verification-code writes are blocked because the Keychain internet-password API does not expose a safe verification-code write surface.
+- Encrypted backups use AES-GCM with PBKDF2-HMAC-SHA256 key derivation. Older PassSync backups using the v1 SHA-256 iteration envelope remain readable.
 
 ## What Does Not Work Yet
 
@@ -30,11 +31,11 @@ PassSync is not a complete password-manager migration tool. These are the curren
 
 ### Not Built Yet
 
-- **Restore is not implemented.** PassSync can create and validate encrypted backups, but it cannot yet restore provider state from a backup.
 - **Continuous sync is not implemented.** v1 is one-time plan/apply only. It does not watch for changes or run in the background.
-- **Conflict review is still basic.** The CLI can prompt per conflict during apply, and the macOS app can display plan actions, but there is no rich field-by-field merge UI yet.
+- **Field-level conflict merge is not implemented.** The CLI and macOS app can display field-level differences, and the CLI can choose a winning provider per conflict, but there is no per-field merge/apply model yet.
 - **Only website/app login records are in scope.** Secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, custom item types, and arbitrary custom fields are not synced.
 - **The native macOS app is local-build only.** A SwiftUI app target exists, but signing, notarization, releases, auto-update, and installer packaging are not implemented.
+- **Restore is provider-visible login recovery only.** Restore can plan/apply backed-up website/app login records for one provider at a time. It still blocks passkey evidence and Apple-destination TOTP unless explicitly allowed as password-only.
 
 ### Deliberately Not Attempted
 
@@ -78,6 +79,14 @@ Run a safe preflight. This checks local tool availability but does not enumerate
 
 ```sh
 swift run passsync preflight
+```
+
+Run deeper local readiness checks:
+
+```sh
+swift run passsync doctor \
+  --backup-path "$HOME/.passsync/backups/doctor-probe.psbackup" \
+  --app-bundle .build/debug/PassSync.app
 ```
 
 Run the fully offline simulator first:
@@ -143,6 +152,14 @@ Inspect available commands:
 swift run passsync help
 ```
 
+List and inspect offline examples:
+
+```sh
+swift run passsync examples list
+swift run passsync examples show conflict
+swift run passsync examples write bidirectional --output /tmp/passsync-bidirectional.json
+```
+
 Dry-run a one-way sync from 1Password to Apple Passwords:
 
 ```sh
@@ -184,6 +201,25 @@ swift run passsync restore-check --backup-path "$HOME/.passsync/backups/manual.p
 ```
 
 Backups include credentials visible to the 1Password CLI and macOS Keychain internet-password APIs. Provider-managed passkey private key material is not exported through those APIs.
+
+Plan a restore from backup without mutating anything:
+
+```sh
+swift run passsync restore-plan \
+  --backup-path "$HOME/.passsync/backups/manual.psbackup" \
+  --to 1password
+```
+
+Apply a reviewed restore plan:
+
+```sh
+swift run passsync restore \
+  --backup-path "$HOME/.passsync/backups/manual.psbackup" \
+  --to 1password \
+  --apply
+```
+
+Restore apply creates a second pre-restore encrypted backup of the current target provider state before mutating anything.
 
 ## Simulation
 
@@ -301,16 +337,16 @@ Use that flag only after reviewing the plan.
 
 ### Near Term
 
-- **Restore flow.** Add `restore-plan` and `restore --apply` so encrypted backups can be used to recover provider-visible records.
-- **Better conflict review.** Add field-level diffs, per-field merge decisions, batch actions, and reusable decision files.
-- **Doctor checks.** Expand preflight into `doctor` checks for `op`, Keychain access, app bundle state, backup writability, and risky iCloud Keychain conditions.
-- **Simulation examples.** Add built-in examples for minimal login, conflict, TOTP, passkey-blocked, and bidirectional migration cases.
-- **Backup hardening.** Move the encrypted backup KDF from the current versioned SHA-256 iteration scheme to a standard KDF such as PBKDF2 or Argon2.
+- **Per-field conflict decisions.** Turn field-level diff display into a real merge model with per-field choices, batch actions, and reusable decision files.
+- **Restore UI hardening.** Add richer SwiftUI restore review, restore history, and clearer pre-restore backup evidence.
+- **Doctor expansion.** Add more checks for `op` authentication edge cases, Keychain read/write probes, app signing state, and risky iCloud Keychain conditions.
+- **More examples.** Add examples for restore, password-only TOTP downgrade, duplicate records, empty providers, and malformed input handling.
+- **Legacy backup migration.** Add an explicit command to read v1 backups and rewrite them with the PBKDF2 v2 envelope.
 
 ### Mid Term
 
 - **Signed macOS app distribution.** Add signing, notarization, release packaging, and a documented install path for the SwiftUI app.
-- **Richer SwiftUI workflows.** Add guided preflight, plan review, backup creation, conflict resolution, and restore screens.
+- **Richer SwiftUI workflows.** Add guided backup creation, per-field conflict resolution, restore history, and safer apply confirmations.
 - **Durable sync state.** Add a local SQLite state store for provider fingerprints, last-seen records, decisions, and audit history.
 - **Expanded item audits.** Detect secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, and custom fields, then report exactly what can and cannot be migrated.
 - **Manual passkey/TOTP migration guides.** Add account-level checklists for records that require provider-supported Credential Exchange or manual reenrollment.

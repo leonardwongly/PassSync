@@ -57,6 +57,20 @@ public enum ConflictPolicy: String, Codable, Sendable, CaseIterable {
     case preferNewest = "prefer-newest"
 }
 
+public enum RestoreTarget: String, Codable, Sendable, CaseIterable {
+    case onePassword = "1password"
+    case applePasswords = "apple-passwords"
+
+    public var provider: Provider {
+        switch self {
+        case .onePassword:
+            return .onePassword
+        case .applePasswords:
+            return .applePasswords
+        }
+    }
+}
+
 public struct CredentialRecord: Codable, Equatable, Sendable {
     public var provider: Provider
     public var sourceID: String?
@@ -211,3 +225,29 @@ public struct SyncOptions: Equatable, Sendable {
     }
 }
 
+public enum CredentialField: String, Codable, Sendable, CaseIterable {
+    case title
+    case username
+    case password
+    case urls
+    case notes
+    case totpURI
+    case hasPasskey
+    case modifiedAt
+}
+
+public struct CredentialFieldDiff: Codable, Equatable, Sendable, Identifiable {
+    public var field: CredentialField
+    public var sourceValue: String
+    public var destinationValue: String
+    public var isSecret: Bool
+
+    public init(field: CredentialField, sourceValue: String, destinationValue: String, isSecret: Bool = false) {
+        self.field = field
+        self.sourceValue = sourceValue
+        self.destinationValue = destinationValue
+        self.isSecret = isSecret
+    }
+
+    public var id: String { field.rawValue }
+}

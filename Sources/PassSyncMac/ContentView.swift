@@ -19,6 +19,10 @@ struct ContentView: View {
                 SimulationView()
             case .livePlan:
                 LivePlanView()
+            case .restore:
+                RestoreView()
+            case .conflicts:
+                ConflictReviewView()
             case .limitations:
                 LimitationsView()
             }
@@ -211,13 +215,159 @@ private struct LivePlanView: View {
     }
 }
 
+private struct RestoreView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            FormPanel(title: "Restore") {
+                TextField("Backup path", text: $model.restoreBackupPath)
+                SecureField("Backup passphrase", text: $model.restorePassphrase)
+                Picker("Restore target", selection: $model.restoreTarget) {
+                    ForEach(RestoreTarget.allCases) { target in
+                        Text(target.displayTitle).tag(target)
+                    }
+                }
+                TextField("1Password vault", text: $model.restoreVault)
+                TextField("op path", text: $model.opPath)
+                Toggle("Allow password-only Apple writes for unsupported TOTP", isOn: $model.restoreAllowPasswordOnly)
+
+                HStack {
+                    PrimaryButton(title: model.isRunningRestorePlan ? "Planning..." : "Run Restore Plan", systemImage: "clock.arrow.circlepath") {
+                        Task { await model.runRestorePlan() }
+                    }
+                    .disabled(model.isRunningRestorePlan || model.isApplyingRestorePlan)
+
+                    Button(role: .destructive) {
+                        Task { await model.applyRestorePlan() }
+                    } label: {
+                        Label(model.isApplyingRestorePlan ? "Restoring..." : "Apply Restore", systemImage: "arrow.counterclockwise")
+                    }
+                    .disabled(!canApply)
+                }
+            }
+
+            if let error = model.restoreError {
+                MessageBanner(message: error, style: .error)
+            }
+
+            PlanResultsView(plan: model.restorePlan, message: model.restoreMessage)
+        }
+    }
+
+    private var canApply: Bool {
+        guard let plan = model.restorePlan else { return false }
+        return !model.isRunningRestorePlan &&
+            !model.isApplyingRestorePlan &&
+            !model.restorePassphrase.isEmpty &&
+            plan.actions.allSatisfy { $0.kind != .conflict && $0.kind != .unsupported }
+    }
+}
+
+private struct ConflictReviewView: View {
+    @EnvironmentObject private var model: AppModel
+
+    private var reviewActions: [SyncAction] {
+        let plans = [model.livePlan, model.simulationPlan, model.restorePlan].compactMap { $0 }
+        return plans
+            .flatMap(\.actions)
+            .filter { $0.sourceRecord != nil && $0.destinationRecord != nil }
+            .filter {
+                switch $0.kind {
+                case .conflict, .updateOnePassword, .updateApple, .unsupported:
+                    return true
+                case .createInOnePassword, .createInApple, .skipIdentical:
+                    return false
+                }
+            }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                HeaderView(
+                    title: "Conflict Review",
+                    subtitle: "Field-level differences from the latest simulation, live, and restore plans."
+                )
+
+                if reviewActions.isEmpty {
+                    ContentUnavailableView(
+                        "No Field Differences",
+                        systemImage: "rectangle.split.2x1",
+                        description: Text("Run a simulation, live plan, or restore plan to inspect conflicts and updates.")
+                    )
+                } else {
+                    ForEach(reviewActions, id: \.key) { action in
+                        ConflictDiffPanel(action: action)
+                    }
+                }
+            }
+            .padding(28)
+            .frame(maxWidth: 1040, alignment: .leading)
+        }
+    }
+}
+
+private struct ConflictDiffPanel: View {
+    var action: SyncAction
+
+    private var diffs: [CredentialFieldDiff] {
+        guard let source = action.sourceRecord,
+              let destination = action.destinationRecord else {
+            return []
+        }
+        return CredentialDiff.fieldDiffs(source: source, destination: destination)
+    }
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(action.key.description)
+                            .font(.headline)
+                        Text(action.reason)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(action.kind.rawValue)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.orange.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+                    GridRow {
+                        Text("Field").font(.caption.weight(.semibold))
+                        Text("Source").font(.caption.weight(.semibold))
+                        Text("Destination").font(.caption.weight(.semibold))
+                    }
+                    Divider()
+                        .gridCellColumns(3)
+                    ForEach(diffs) { diff in
+                        GridRow {
+                            Text(diff.field.rawValue)
+                                .foregroundStyle(.secondary)
+                            Text(diff.sourceValue.isEmpty ? "<empty>" : diff.sourceValue)
+                            Text(diff.destinationValue.isEmpty ? "<empty>" : diff.destinationValue)
+                        }
+                    }
+                }
+                .font(.subheadline)
+            }
+        }
+    }
+}
+
 private struct LimitationsView: View {
     private let rows = [
         ("Passkeys are not migrated", "Use provider-supported FIDO Credential Exchange or manual reenrollment."),
         ("Apple TOTP writes are blocked", "The Keychain internet-password API does not create Passwords.app verification-code entries."),
         ("Only login records are in scope", "Secure notes, cards, identities, SSH keys, Wi-Fi passwords, and custom item types are not synced."),
         ("Continuous sync is not available", "This app performs one-time plan/apply workflows."),
-        ("Restore is not implemented", "Backups can be created and validated by the CLI; restore is future work."),
+        ("Restore is limited", "Restore handles backed-up website/app login records one provider at a time and still blocks passkey/TOTP unsafe cases."),
         ("Apple behavior depends on local state", "Keychain permissions and iCloud Keychain settings affect live provider behavior.")
     ]
 
@@ -303,6 +453,14 @@ private struct ActionRow: View {
                 Text(action.reason)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                if let source = action.sourceRecord, let destination = action.destinationRecord {
+                    let diffs = CredentialDiff.fieldDiffs(source: source, destination: destination)
+                    if !diffs.isEmpty {
+                        Text("\(diffs.count) field difference\(diffs.count == 1 ? "" : "s")")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
             Spacer()
         }

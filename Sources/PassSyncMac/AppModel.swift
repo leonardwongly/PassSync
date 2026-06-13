@@ -7,12 +7,17 @@ final class AppModel: ObservableObject {
     @Published var preflight: Loadable<PreflightReport> = .idle
     @Published var simulationPlan: SyncPlan?
     @Published var livePlan: SyncPlan?
+    @Published var restorePlan: SyncPlan?
     @Published var simulationMessage: String?
     @Published var liveMessage: String?
     @Published var liveError: String?
+    @Published var restoreMessage: String?
+    @Published var restoreError: String?
     @Published var isRunningSimulation = false
     @Published var isRunningLivePlan = false
     @Published var isApplyingLivePlan = false
+    @Published var isRunningRestorePlan = false
+    @Published var isApplyingRestorePlan = false
 
     @Published var simulationDirection: SyncDirection = .bidirectional
     @Published var simulationTruthSource: TruthSource = .none
@@ -30,7 +35,14 @@ final class AppModel: ObservableObject {
     @Published var backupPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups/passsync-app.psbackup"
     @Published var backupPassphrase = ""
 
+    @Published var restoreBackupPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups/passsync-app.psbackup"
+    @Published var restoreTarget: RestoreTarget = .onePassword
+    @Published var restoreVault = ""
+    @Published var restorePassphrase = ""
+    @Published var restoreAllowPasswordOnly = false
+
     private var liveSnapshot: (onePassword: [CredentialRecord], apple: [CredentialRecord])?
+    private var restoreSnapshot: [CredentialRecord]?
 
     func runPreflight() async {
         preflight = .loading
@@ -202,6 +214,100 @@ final class AppModel: ObservableObject {
         isApplyingLivePlan = false
     }
 
+    func runRestorePlan() async {
+        isRunningRestorePlan = true
+        restoreError = nil
+        restoreMessage = nil
+        restorePlan = nil
+        defer { isRunningRestorePlan = false }
+
+        guard !restorePassphrase.isEmpty else {
+            restoreError = "Backup passphrase is required to read the backup."
+            return
+        }
+
+        let backupPath = restoreBackupPath
+        let passphrase = restorePassphrase
+        let target = restoreTarget
+        let opPath = opPath
+        let vault = normalizedVault(restoreVault)
+        let allowPasswordOnly = restoreAllowPasswordOnly
+
+        do {
+            let result = try await Task.detached { () throws -> (SyncPlan, [CredentialRecord]) in
+                let backup = try BackupManager().readEncryptedBackup(inputPath: backupPath, passphrase: passphrase)
+                let current: [CredentialRecord]
+                switch target {
+                case .onePassword:
+                    current = try OnePasswordClient(runner: ProcessRunner(), opPath: opPath).fetchLogins(vault: vault)
+                case .applePasswords:
+                    current = try AppleKeychainClient().fetchLogins()
+                }
+                let plan = RestorePlanner().buildPlan(
+                    backup: backup,
+                    currentRecords: current,
+                    target: target,
+                    allowPasswordOnlyForUnsupportedSecurityMaterial: allowPasswordOnly
+                )
+                return (plan, current)
+            }.value
+            restorePlan = result.0
+            restoreSnapshot = result.1
+            restoreMessage = "Restore dry-run generated with \(result.0.actions.count) actions."
+        } catch {
+            restoreError = String(describing: error)
+        }
+    }
+
+    func applyRestorePlan() async {
+        guard let restorePlan else {
+            restoreError = "Run a restore dry-run first."
+            return
+        }
+        guard let restoreSnapshot else {
+            restoreError = "Current provider snapshot is missing. Run restore dry-run again."
+            return
+        }
+        guard !restorePassphrase.isEmpty else {
+            restoreError = "Backup passphrase is required."
+            return
+        }
+        guard restorePlan.actions.allSatisfy({ $0.kind != .conflict && $0.kind != .unsupported }) else {
+            restoreError = "Restore is blocked until unsupported actions are resolved."
+            return
+        }
+
+        isApplyingRestorePlan = true
+        restoreError = nil
+        restoreMessage = nil
+        let target = restoreTarget
+        let passphrase = restorePassphrase
+        let opPath = opPath
+        let vault = normalizedVault(restoreVault)
+        let safetyBackupPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups/passsync-pre-restore-\(Int(Date().timeIntervalSince1970)).psbackup"
+
+        do {
+            try await Task.detached {
+                let safetyPayload = BackupPayload(
+                    onePasswordRecords: target == .onePassword ? restoreSnapshot : [],
+                    appleRecords: target == .applePasswords ? restoreSnapshot : [],
+                    warnings: ["Pre-restore safety backup created by PassSync macOS app."]
+                )
+                try BackupManager().writeEncryptedBackup(payload: safetyPayload, passphrase: passphrase, outputPath: safetyBackupPath)
+                let onePassword = OnePasswordClient(runner: ProcessRunner(), opPath: opPath)
+                let apple = AppleKeychainClient()
+                try SyncExecutor(onePassword: onePassword, applePasswords: apple).apply(
+                    plan: restorePlan,
+                    onePasswordVault: vault
+                )
+            }.value
+            restoreMessage = "Restore applied. Pre-restore backup written to \(safetyBackupPath)."
+        } catch {
+            restoreError = String(describing: error)
+        }
+        isApplyingRestorePlan = false
+    }
+
     private func writeSimulationState(_ state: SimulationState, path: String) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -221,6 +327,8 @@ enum AppSection: String, CaseIterable, Identifiable {
     case dashboard
     case simulation
     case livePlan
+    case restore
+    case conflicts
     case limitations
 
     var id: String { rawValue }
@@ -233,6 +341,10 @@ enum AppSection: String, CaseIterable, Identifiable {
             return "Simulation"
         case .livePlan:
             return "Live Plan"
+        case .restore:
+            return "Restore"
+        case .conflicts:
+            return "Conflicts"
         case .limitations:
             return "Limitations"
         }
@@ -246,6 +358,10 @@ enum AppSection: String, CaseIterable, Identifiable {
             return "flask"
         case .livePlan:
             return "key"
+        case .restore:
+            return "clock.arrow.circlepath"
+        case .conflicts:
+            return "rectangle.split.2x1"
         case .limitations:
             return "exclamationmark.triangle"
         }
@@ -312,6 +428,19 @@ extension ConflictPolicy: Identifiable {
             return "Prefer Apple"
         case .preferNewest:
             return "Prefer newest"
+        }
+    }
+}
+
+extension RestoreTarget: Identifiable {
+    public var id: String { rawValue }
+
+    var displayTitle: String {
+        switch self {
+        case .onePassword:
+            return "1Password"
+        case .applePasswords:
+            return "Apple Passwords"
         }
     }
 }
