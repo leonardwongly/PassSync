@@ -46,6 +46,7 @@ jobs:
           "$BIN_DIR/passsync" backup-list --backup-path /tmp/passsync-empty-backups
           mkdir -p /tmp/passsync-empty-audit
           "$BIN_DIR/passsync" audit-list --input /tmp/passsync-empty-audit
+          "$BIN_DIR/passsync" doctor --op-path /bin/echo --audit-path /tmp/passsync-empty-audit --release-script Scripts/package_release.sh
 
       - name: Package unsigned release archive
         run: Scripts/package_release.sh /tmp/passsync-release-artifacts

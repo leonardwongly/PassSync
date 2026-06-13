@@ -38,13 +38,24 @@ public struct DoctorOptions: Sendable {
     public var opPath: String
     public var vault: String?
     public var backupPath: String?
+    public var auditPath: String?
     public var appBundlePath: String?
+    public var releaseScriptPath: String?
 
-    public init(opPath: String, vault: String? = nil, backupPath: String? = nil, appBundlePath: String? = nil) {
+    public init(
+        opPath: String,
+        vault: String? = nil,
+        backupPath: String? = nil,
+        auditPath: String? = nil,
+        appBundlePath: String? = nil,
+        releaseScriptPath: String? = nil
+    ) {
         self.opPath = opPath
         self.vault = vault
         self.backupPath = backupPath
+        self.auditPath = auditPath
         self.appBundlePath = appBundlePath
+        self.releaseScriptPath = releaseScriptPath
     }
 }
 
@@ -87,8 +98,21 @@ public struct Doctor: Sendable {
             checks.append(backupDirectoryCheck(path: backupPath))
         }
 
+        if let auditPath = options.auditPath {
+            checks.append(writableDirectoryCheck(
+                id: "audit.writable",
+                title: "Audit Directory",
+                path: auditPath,
+                treatsPathAsFile: false
+            ))
+        }
+
         if let appBundlePath = options.appBundlePath {
-            checks.append(appBundleCheck(path: appBundlePath))
+            checks.append(contentsOf: appBundleChecks(path: appBundlePath))
+        }
+
+        if let releaseScriptPath = options.releaseScriptPath {
+            checks.append(releaseScriptCheck(path: releaseScriptPath))
         }
 
         checks.append(DoctorCheck(
@@ -152,24 +176,80 @@ public struct Doctor: Sendable {
     }
 
     private func backupDirectoryCheck(path: String) -> DoctorCheck {
-        let url = URL(fileURLWithPath: path).deletingLastPathComponent()
+        writableDirectoryCheck(
+            id: "backup.writable",
+            title: "Backup Directory",
+            path: path,
+            treatsPathAsFile: true
+        )
+    }
+
+    private func writableDirectoryCheck(id: String, title: String, path: String, treatsPathAsFile: Bool) -> DoctorCheck {
+        let url = treatsPathAsFile ? URL(fileURLWithPath: path).deletingLastPathComponent() : URL(fileURLWithPath: path)
         do {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
             let probe = url.appendingPathComponent(".passsync-write-probe-\(UUID().uuidString)")
             try Data("probe".utf8).write(to: probe, options: [.atomic])
             try FileManager.default.removeItem(at: probe)
-            return DoctorCheck(id: "backup.writable", title: "Backup Directory", severity: .pass, detail: "\(url.path) is writable.")
+            return DoctorCheck(id: id, title: title, severity: .pass, detail: "\(url.path) is writable.")
         } catch {
-            return DoctorCheck(id: "backup.writable", title: "Backup Directory", severity: .fail, detail: "\(url.path) is not writable: \(error)")
+            return DoctorCheck(id: id, title: title, severity: .fail, detail: "\(url.path) is not writable: \(error)")
         }
     }
 
-    private func appBundleCheck(path: String) -> DoctorCheck {
+    private func appBundleChecks(path: String) -> [DoctorCheck] {
         let info = URL(fileURLWithPath: path).appendingPathComponent("Contents/Info.plist")
         guard FileManager.default.fileExists(atPath: info.path) else {
-            return DoctorCheck(id: "app.bundle", title: "macOS App Bundle", severity: .warning, detail: "No Info.plist at \(info.path).")
+            return [
+                DoctorCheck(id: "app.bundle", title: "macOS App Bundle", severity: .warning, detail: "No Info.plist at \(info.path).")
+            ]
         }
-        return DoctorCheck(id: "app.bundle", title: "macOS App Bundle", severity: .pass, detail: "Bundle metadata exists at \(info.path).")
+        var checks = [
+            DoctorCheck(id: "app.bundle", title: "macOS App Bundle", severity: .pass, detail: "Bundle metadata exists at \(info.path).")
+        ]
+        if let infoDictionary = NSDictionary(contentsOf: info),
+           let version = infoDictionary["CFBundleShortVersionString"] as? String,
+           let identifier = infoDictionary["CFBundleIdentifier"] as? String {
+            checks.append(DoctorCheck(
+                id: "app.bundle.version",
+                title: "macOS App Version",
+                severity: .pass,
+                detail: "\(identifier) \(version)"
+            ))
+        } else {
+            checks.append(DoctorCheck(
+                id: "app.bundle.version",
+                title: "macOS App Version",
+                severity: .warning,
+                detail: "Could not read bundle identifier and short version from Info.plist."
+            ))
+        }
+        checks.append(appSigningCheck(path: path))
+        return checks
+    }
+
+    private func appSigningCheck(path: String) -> DoctorCheck {
+        do {
+            let result = try runCommand(executable: "/usr/bin/codesign", arguments: ["--verify", "--deep", "--strict", path])
+            return DoctorCheck(
+                id: "app.signing",
+                title: "macOS App Signing",
+                severity: result.status == 0 ? .pass : .warning,
+                detail: result.status == 0 ? "App bundle signature verifies." : SecretRedactor.redactJSONLikeString(String(data: result.stderr, encoding: .utf8) ?? "App bundle is unsigned or signature verification failed.")
+            )
+        } catch {
+            return DoctorCheck(id: "app.signing", title: "macOS App Signing", severity: .warning, detail: String(describing: error))
+        }
+    }
+
+    private func releaseScriptCheck(path: String) -> DoctorCheck {
+        let executable = FileManager.default.isExecutableFile(atPath: path)
+        return DoctorCheck(
+            id: "release.script",
+            title: "Release Packaging Script",
+            severity: executable ? .pass : .warning,
+            detail: executable ? "\(path) is executable." : "\(path) is not executable or does not exist."
+        )
     }
 
     private func runCommand(executable: String, arguments: [String]) throws -> ProcessResult {

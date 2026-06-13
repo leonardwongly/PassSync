@@ -93,7 +93,9 @@ struct PassSyncCLI {
             opPath: options.opPath,
             vault: options.vault,
             backupPath: options.backupPath,
-            appBundlePath: options.appBundlePath
+            auditPath: options.auditPath ?? defaultAuditPath(),
+            appBundlePath: options.appBundlePath,
+            releaseScriptPath: options.releaseScriptPath
         ))
         if options.json {
             printJSON(report)
@@ -870,11 +872,13 @@ struct PassSyncCLI {
       --conflicts VALUE          interactive|fail|prefer-1password|prefer-apple|prefer-newest. Default: interactive.
       --vault VALUE              1Password vault name or ID.
       --backup-path PATH         Encrypted backup path. Required for restore-check; defaulted for backup/apply.
+      --audit-path PATH          Audit receipt directory for doctor checks.
       --to VALUE                 Restore target: 1password|apple-passwords.
       --input PATH               Simulation input state JSON or backup-migrate source.
       --output PATH              Simulation apply output, backup-migrate destination, or dry-run decision-file export path.
       --decision-file PATH       Apply reviewed decisions from a decision file to a freshly built plan or simulation.
       --app-bundle PATH          App bundle path for doctor checks.
+      --release-script PATH      Release script path for doctor checks.
       --op-path PATH             Path to op. Default: /opt/homebrew/bin/op.
       --json                     Print redacted JSON plan.
       --allow-password-only-for-unsupported-security-material
@@ -895,11 +899,13 @@ private struct CLIOptions {
     var conflictPolicy: ConflictPolicy = .interactive
     var vault: String?
     var backupPath: String?
+    var auditPath: String?
     var restoreTarget: RestoreTarget?
     var inputPath: String?
     var outputPath: String?
     var decisionFilePath: String?
     var appBundlePath: String?
+    var releaseScriptPath: String?
     var opPath = "/opt/homebrew/bin/op"
     var json = false
     var allowPasswordOnly = false
@@ -921,6 +927,8 @@ private struct CLIOptions {
                 vault = try Self.value(after: arg, in: args, index: &index)
             case "--backup-path":
                 backupPath = try Self.value(after: arg, in: args, index: &index)
+            case "--audit-path":
+                auditPath = try Self.value(after: arg, in: args, index: &index)
             case "--to":
                 restoreTarget = try Self.value(after: arg, in: args, index: &index).parse(RestoreTarget.self)
             case "--input":
@@ -931,6 +939,8 @@ private struct CLIOptions {
                 decisionFilePath = try Self.value(after: arg, in: args, index: &index)
             case "--app-bundle":
                 appBundlePath = try Self.value(after: arg, in: args, index: &index)
+            case "--release-script":
+                releaseScriptPath = try Self.value(after: arg, in: args, index: &index)
             case "--op-path":
                 opPath = try Self.value(after: arg, in: args, index: &index)
             case "--json":

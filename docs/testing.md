@@ -81,10 +81,12 @@ Run doctor for deeper local checks:
 APP_PATH="$(Scripts/package_app.sh)"
 swift run passsync doctor \
   --backup-path "$HOME/.passsync/backups/doctor-probe.psbackup" \
-  --app-bundle "$APP_PATH"
+  --audit-path "$HOME/.passsync/audit" \
+  --app-bundle "$APP_PATH" \
+  --release-script Scripts/package_release.sh
 ```
 
-Doctor may inspect local tool authentication, backup-path writability, app metadata, and known unsupported security material policies. It should not sync credentials.
+Doctor may inspect local tool authentication, backup/audit-path writability, app metadata/signing state, release packaging script availability, and known unsupported security material policies. It should not sync credentials.
 
 ## Level 3: Isolated Live Dry-Run
 
@@ -194,6 +196,7 @@ jq empty /tmp/passsync-sim-decisions.json
 "$BIN_DIR/passsync" backup-list --backup-path /tmp/passsync-empty-backups
 mkdir -p /tmp/passsync-empty-audit
 "$BIN_DIR/passsync" audit-list --input /tmp/passsync-empty-audit
+"$BIN_DIR/passsync" doctor --op-path /bin/echo --audit-path /tmp/passsync-empty-audit --release-script Scripts/package_release.sh
 Scripts/package_release.sh /tmp/passsync-release-artifacts
 ```
 

@@ -103,7 +103,9 @@ Run deeper local readiness checks:
 APP_PATH="$(Scripts/package_app.sh)"
 swift run passsync doctor \
   --backup-path "$HOME/.passsync/backups/doctor-probe.psbackup" \
-  --app-bundle "$APP_PATH"
+  --audit-path "$HOME/.passsync/audit" \
+  --app-bundle "$APP_PATH" \
+  --release-script Scripts/package_release.sh
 ```
 
 See [docs/testing.md](docs/testing.md) for a staged testing path from offline fixtures to isolated live apply.
@@ -473,7 +475,7 @@ Use that flag only after reviewing the plan.
 
 - **SwiftUI decision workflow hardening.** Add richer validation, batch controls, and clearer warnings when a decision file does not match the current plan.
 - **Restore UI hardening.** Add richer SwiftUI restore verification, restore history, and clearer pre-restore backup evidence.
-- **Doctor expansion.** Add more checks for `op` authentication edge cases, Keychain read/write probes, app signing state, and risky iCloud Keychain conditions.
+- **Doctor expansion.** Add more checks for risky iCloud Keychain conditions and optional deeper provider probes.
 - **Audit hardening.** Sign or hash-chain receipts and make post-apply verification failures more visible.
 - **Signed macOS distribution.** Add Developer ID signing, hardened runtime, notarization, stapling, and release automation.
 - **Malformed-input hardening.** Expand negative fixtures into end-to-end CLI stderr/exit-code regression tests.
