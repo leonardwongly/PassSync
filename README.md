@@ -20,7 +20,7 @@ The v1 safety posture is intentionally conservative:
 - Encrypted backups use AES-GCM with PBKDF2-HMAC-SHA256 key derivation. Older PassSync backups using the v1 SHA-256 iteration envelope remain readable.
 - `restore-verify` compares current provider state with a backup and exits non-zero when records are missing, different, or unsupported.
 - `backup-migrate` rewrites readable backups with the current backup envelope.
-- Successful `sync --apply` and `restore --apply` write non-secret JSON receipts under `~/.passsync/audit`.
+- Successful `sync --apply` and `restore --apply` write non-secret hash-chained JSON receipts under `~/.passsync/audit`.
 - `backup-list` inventories local `.psbackup` files without decrypting backup contents.
 - `state-*` commands maintain a non-secret local SQLite metadata store for credential fingerprints, reviewed decision files, and apply receipts.
 
@@ -52,7 +52,7 @@ PassSync is not a complete password-manager migration tool. These are the curren
 - **Release artifacts are unsigned.** `Scripts/package_release.sh` creates local unsigned archives with checksums. Public distribution still requires Developer ID signing and notarization.
 - **Restore is provider-visible login recovery only.** Restore can plan/apply backed-up website/app login records for one provider at a time. It still blocks passkey evidence and Apple-destination TOTP unless explicitly allowed as password-only.
 - **Restore verification is provider-visible only.** `restore-verify` checks backed-up website/app login records against the selected provider, but it cannot prove passkey private key material, Apple verification-code entries, or iCloud Keychain propagation.
-- **Audit receipts are not a tamper-proof log.** Receipts are local JSON files for operator evidence. `audit-list` reports file hashes, but receipts are not signed, notarized, append-only, or stored in a hardened database.
+- **Audit receipts are tamper-evident, not tamper-proof.** Receipts are local JSON files for operator evidence. New receipts include the previous receipt SHA-256 and `audit-list` reports file hashes, but receipts are not signed, notarized, append-only, or stored in a hardened database.
 
 ### Deliberately Not Attempted
 
@@ -312,7 +312,7 @@ Successful sync and restore applies write a local receipt under:
 $HOME/.passsync/audit
 ```
 
-Receipts include action keys, action kinds, backup paths, and post-apply verification summaries. They do not include passwords or TOTP seeds.
+Receipts include action keys, action kinds, backup paths, post-apply verification summaries, and the previous receipt SHA-256 when an earlier receipt exists in the same audit directory. They do not include passwords or TOTP seeds.
 
 List local receipts and their SHA-256 hashes:
 
@@ -512,7 +512,7 @@ Use that flag only after reviewing the plan.
 - **Restore UI hardening.** Add richer SwiftUI restore verification, restore history, and clearer pre-restore backup evidence.
 - **Doctor expansion.** Add more checks for risky iCloud Keychain conditions and optional deeper provider probes.
 - **State-store hardening.** Connect more live apply and review workflows to the non-secret SQLite metadata store and add schema migration tests before using it for background sync.
-- **Audit hardening.** Sign or hash-chain receipts and make post-apply verification failures more visible.
+- **Audit hardening.** Sign receipts, add stronger chain validation, and make post-apply verification failures more visible.
 - **Signed macOS distribution.** Add Developer ID signing, hardened runtime, notarization, stapling, and release automation.
 - **Malformed-input hardening.** Expand negative fixtures into end-to-end CLI stderr/exit-code regression tests.
 

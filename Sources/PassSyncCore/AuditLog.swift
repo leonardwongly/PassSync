@@ -60,6 +60,7 @@ public struct ApplyReceipt: Codable, Equatable, Sendable, Identifiable {
     public var mutatingActionCount: Int
     public var actions: [PlanActionReceipt]
     public var postApplyVerification: PostApplyVerification?
+    public var previousReceiptSHA256: String?
 
     public init(
         id: UUID = UUID(),
@@ -73,7 +74,8 @@ public struct ApplyReceipt: Codable, Equatable, Sendable, Identifiable {
         conflictPolicy: ConflictPolicy,
         restoreTarget: RestoreTarget? = nil,
         plan: SyncPlan,
-        postApplyVerification: PostApplyVerification? = nil
+        postApplyVerification: PostApplyVerification? = nil,
+        previousReceiptSHA256: String? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -89,6 +91,7 @@ public struct ApplyReceipt: Codable, Equatable, Sendable, Identifiable {
         self.mutatingActionCount = plan.mutatingActions.count
         self.actions = plan.actions.map(PlanActionReceipt.init)
         self.postApplyVerification = postApplyVerification
+        self.previousReceiptSHA256 = previousReceiptSHA256
     }
 }
 
@@ -98,6 +101,8 @@ public struct AuditLog: Sendable {
     public func writeReceipt(_ receipt: ApplyReceipt, directoryPath: String) throws -> String {
         let directoryURL = URL(fileURLWithPath: directoryPath)
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        var receipt = receipt
+        receipt.previousReceiptSHA256 = try latestReceiptSHA256(in: directoryURL)
 
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
@@ -109,6 +114,19 @@ public struct AuditLog: Sendable {
         encoder.dateEncodingStrategy = .iso8601
         try encoder.encode(receipt).write(to: URL(fileURLWithPath: path), options: [.atomic])
         return path
+    }
+
+    private func latestReceiptSHA256(in directoryURL: URL) throws -> String? {
+        let files = try FileManager.default.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )
+        let receipts = files
+            .filter { $0.lastPathComponent.hasSuffix(".receipt.json") }
+            .sorted { $0.path < $1.path }
+        guard let latest = receipts.last else { return nil }
+        return SHA256Fingerprint.hex(try Data(contentsOf: latest))
     }
 }
 

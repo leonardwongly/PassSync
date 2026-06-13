@@ -83,6 +83,49 @@ import Testing
     #expect(items[0].error == nil)
 }
 
+@Test func auditLogChainsReceiptsWithPreviousReceiptHash() throws {
+    let firstDate = try #require(ISO8601DateFormatter().date(from: "2026-06-13T01:00:00Z"))
+    let secondDate = try #require(ISO8601DateFormatter().date(from: "2026-06-13T01:01:00Z"))
+    let plan = SyncPlan(
+        direction: .bidirectional,
+        truthSource: .none,
+        conflictPolicy: .fail,
+        actions: [],
+        warnings: []
+    )
+    let first = ApplyReceipt(
+        createdAt: firstDate,
+        operation: .sync,
+        backupPath: "/tmp/passsync-first.psbackup",
+        direction: plan.direction,
+        truthSource: plan.truthSource,
+        conflictPolicy: plan.conflictPolicy,
+        plan: plan
+    )
+    let second = ApplyReceipt(
+        createdAt: secondDate,
+        operation: .restore,
+        backupPath: "/tmp/passsync-second.psbackup",
+        direction: plan.direction,
+        truthSource: plan.truthSource,
+        conflictPolicy: plan.conflictPolicy,
+        restoreTarget: .onePassword,
+        plan: plan
+    )
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+
+    let firstPath = try AuditLog().writeReceipt(first, directoryPath: directory.path)
+    let secondPath = try AuditLog().writeReceipt(second, directoryPath: directory.path)
+    let firstHash = SHA256Fingerprint.hex(try Data(contentsOf: URL(fileURLWithPath: firstPath)))
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let decodedFirst = try decoder.decode(ApplyReceipt.self, from: Data(contentsOf: URL(fileURLWithPath: firstPath)))
+    let decodedSecond = try decoder.decode(ApplyReceipt.self, from: Data(contentsOf: URL(fileURLWithPath: secondPath)))
+
+    #expect(decodedFirst.previousReceiptSHA256 == nil)
+    #expect(decodedSecond.previousReceiptSHA256 == firstHash)
+}
+
 @Test func auditInventoryReportsMissingPath() {
     let missing = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 

@@ -66,5 +66,5 @@ PassSync is a local macOS migration assistant for one-time website/app login com
 - The CLI cannot guarantee that Passwords.app and iCloud Keychain have fully synced after a Keychain API write.
 - Restore applies provider-visible website/app login records only; it cannot restore passkey private key material or Apple verification-code entries.
 - PBKDF2 cost is fixed in code today. Future releases should make KDF policy easier to audit and migrate.
-- There is no durable audit-log database yet. Terminal output and backup files are the current evidence trail.
+- Audit receipts are local hash-chained JSON evidence, not a signed or append-only audit log. A local attacker who can rewrite the audit directory can still tamper with the whole chain.
 - Conflict choices are still per-record in the CLI; per-field decision files are future work.

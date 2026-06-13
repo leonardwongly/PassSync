@@ -335,6 +335,7 @@ struct PassSyncCLI {
                 print("  - mutating actions: \(receipt.mutatingActionCount)")
                 print("  - backup: \(receipt.backupPath)")
                 print("  - sha256: \(item.sha256 ?? "unknown")")
+                print("  - previous receipt sha256: \(receipt.previousReceiptSHA256 ?? "none")")
             } else {
                 print("[WARN] \(item.path)")
                 print("  - error: \(item.error ?? "Could not inspect receipt.")")

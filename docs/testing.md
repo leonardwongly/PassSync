@@ -178,7 +178,7 @@ swift run passsync restore-verify \
 
 `restore-verify` exits non-zero if backup records are missing, different, unsupported, or otherwise not restored in the target provider.
 
-Successful apply commands write non-secret receipts under `~/.passsync/audit`. Inspect those receipts after isolated live apply to confirm the backup path, action count, and post-apply verification summary.
+Successful apply commands write non-secret receipts under `~/.passsync/audit`. Inspect those receipts after isolated live apply to confirm the backup path, action count, previous receipt hash, and post-apply verification summary.
 
 ## Backup Migration Test
 
