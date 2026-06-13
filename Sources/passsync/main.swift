@@ -48,6 +48,8 @@ struct PassSyncCLI {
             try backupMigrate(args)
         case "audit-list":
             try auditList(args)
+        case "audit-verify":
+            try auditVerify(args)
         case "state-summary":
             try stateSummary(args)
         case "state-list-credentials":
@@ -340,6 +342,21 @@ struct PassSyncCLI {
                 print("[WARN] \(item.path)")
                 print("  - error: \(item.error ?? "Could not inspect receipt.")")
             }
+        }
+    }
+
+    private static func auditVerify(_ args: [String]) throws {
+        let options = try CLIOptions(args: args)
+        let path = options.inputPath ?? defaultAuditPath()
+        let report = AuditChainVerifier().verify(path: path)
+        if options.json {
+            printJSON(report)
+        } else {
+            printAuditChainReport(report)
+        }
+
+        guard !report.hasFailures else {
+            throw PassSyncError.unsafeApply("Audit chain verification failed with \(report.failureCount) failure(s).")
         }
     }
 
@@ -810,6 +827,25 @@ struct PassSyncCLI {
         }
     }
 
+    private static func printAuditChainReport(_ report: AuditChainReport) {
+        print("PassSync audit chain verification")
+        print("- path: \(report.path)")
+        print("- receipts: \(report.receiptCount)")
+        print("- result: \(report.hasFailures ? "failed" : "passed")")
+        for issue in report.issues {
+            let mark: String
+            switch issue.severity {
+            case .pass:
+                mark = "PASS"
+            case .warning:
+                mark = "WARN"
+            case .fail:
+                mark = "FAIL"
+            }
+            print("[\(mark)] \(issue.path ?? "audit"): \(issue.title) - \(issue.detail)")
+        }
+    }
+
     private static func printJSON<T: Encodable>(_ value: T) {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -965,6 +1001,7 @@ struct PassSyncCLI {
       passsync backup-list [--backup-path FILE_OR_DIR] [--json]
       passsync backup-migrate --input PATH --output PATH [--json]
       passsync audit-list [--input FILE_OR_DIR] [--json]
+      passsync audit-verify [--input AUDIT_DIR] [--json]
       passsync state-summary [--state-path PATH] [--json]
       passsync state-list-credentials [--state-path PATH] [--limit N] [--json]
       passsync state-record-simulation --input PATH [--state-path PATH] [--json]

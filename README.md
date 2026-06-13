@@ -320,6 +320,12 @@ List local receipts and their SHA-256 hashes:
 swift run passsync audit-list --input "$HOME/.passsync/audit"
 ```
 
+Verify the local receipt hash chain:
+
+```sh
+swift run passsync audit-verify --input "$HOME/.passsync/audit"
+```
+
 The SwiftUI Recovery screen can scan both backup files and audit receipts.
 
 ## State Store
@@ -512,7 +518,7 @@ Use that flag only after reviewing the plan.
 - **Restore UI hardening.** Add richer SwiftUI restore verification, restore history, and clearer pre-restore backup evidence.
 - **Doctor expansion.** Add more checks for risky iCloud Keychain conditions and optional deeper provider probes.
 - **State-store hardening.** Connect more live apply and review workflows to the non-secret SQLite metadata store and add schema migration tests before using it for background sync.
-- **Audit hardening.** Sign receipts, add stronger chain validation, and make post-apply verification failures more visible.
+- **Audit hardening.** Sign receipts and make post-apply verification failures more visible.
 - **Signed macOS distribution.** Add Developer ID signing, hardened runtime, notarization, stapling, and release automation.
 - **Malformed-input hardening.** Continue expanding end-to-end CLI stderr/exit-code regression tests as new parser surfaces are added.
 

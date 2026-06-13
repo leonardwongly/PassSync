@@ -124,9 +124,26 @@ public struct AuditLog: Sendable {
         )
         let receipts = files
             .filter { $0.lastPathComponent.hasSuffix(".receipt.json") }
-            .sorted { $0.path < $1.path }
+            .sorted(by: receiptFileSort)
         guard let latest = receipts.last else { return nil }
         return SHA256Fingerprint.hex(try Data(contentsOf: latest))
+    }
+
+    private func receiptFileSort(_ left: URL, _ right: URL) -> Bool {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let leftReceipt = try? decoder.decode(ApplyReceipt.self, from: Data(contentsOf: left))
+        let rightReceipt = try? decoder.decode(ApplyReceipt.self, from: Data(contentsOf: right))
+        switch (leftReceipt?.createdAt, rightReceipt?.createdAt) {
+        case let (leftDate?, rightDate?):
+            return leftDate == rightDate ? left.path < right.path : leftDate < rightDate
+        case (_?, nil):
+            return false
+        case (nil, _?):
+            return true
+        case (nil, nil):
+            return left.path < right.path
+        }
     }
 }
 
@@ -221,6 +238,132 @@ public struct AuditInventory: Sendable {
                 receipt: nil,
                 error: String(describing: error)
             )
+        }
+    }
+}
+
+public struct AuditChainIssue: Codable, Equatable, Sendable, Identifiable {
+    public var id: String
+    public var path: String?
+    public var severity: DoctorSeverity
+    public var title: String
+    public var detail: String
+
+    public init(id: String, path: String?, severity: DoctorSeverity, title: String, detail: String) {
+        self.id = id
+        self.path = path
+        self.severity = severity
+        self.title = title
+        self.detail = detail
+    }
+}
+
+public struct AuditChainReport: Codable, Equatable, Sendable {
+    public var generatedAt: Date
+    public var path: String
+    public var receiptCount: Int
+    public var issues: [AuditChainIssue]
+
+    public init(generatedAt: Date = Date(), path: String, receiptCount: Int, issues: [AuditChainIssue]) {
+        self.generatedAt = generatedAt
+        self.path = path
+        self.receiptCount = receiptCount
+        self.issues = issues
+    }
+
+    public var hasFailures: Bool {
+        issues.contains { $0.severity == .fail }
+    }
+
+    public var failureCount: Int {
+        issues.filter { $0.severity == .fail }.count
+    }
+}
+
+public struct AuditChainVerifier: Sendable {
+    public init() {}
+
+    public func verify(path: String) -> AuditChainReport {
+        let items = AuditInventory().scan(path: path).sorted(by: receiptItemSort)
+        var issues: [AuditChainIssue] = []
+        var previousHash: String?
+        var verifiedReceipts = 0
+
+        for item in items {
+            guard item.error == nil, let receipt = item.receipt, let sha256 = item.sha256 else {
+                issues.append(AuditChainIssue(
+                    id: "receipt.decode.\(item.path)",
+                    path: item.path,
+                    severity: .fail,
+                    title: "Receipt could not be decoded",
+                    detail: item.error ?? "Missing receipt hash or decoded receipt."
+                ))
+                continue
+            }
+
+            verifiedReceipts += 1
+            if let previousHash {
+                if receipt.previousReceiptSHA256 == previousHash {
+                    issues.append(AuditChainIssue(
+                        id: "receipt.chain.\(item.path)",
+                        path: item.path,
+                        severity: .pass,
+                        title: "Receipt chain link matches",
+                        detail: "Previous receipt hash matches \(previousHash)."
+                    ))
+                } else {
+                    issues.append(AuditChainIssue(
+                        id: "receipt.chain.\(item.path)",
+                        path: item.path,
+                        severity: .fail,
+                        title: "Receipt chain link mismatch",
+                        detail: "Expected previous receipt hash \(previousHash), found \(receipt.previousReceiptSHA256 ?? "none")."
+                    ))
+                }
+            } else if let declaredPrevious = receipt.previousReceiptSHA256 {
+                issues.append(AuditChainIssue(
+                    id: "receipt.chain.first.\(item.path)",
+                    path: item.path,
+                    severity: .fail,
+                    title: "First receipt points to a missing predecessor",
+                    detail: "First scanned receipt declares previous hash \(declaredPrevious). Verify the full audit directory."
+                ))
+            } else {
+                issues.append(AuditChainIssue(
+                    id: "receipt.chain.first.\(item.path)",
+                    path: item.path,
+                    severity: .pass,
+                    title: "Receipt chain starts here",
+                    detail: "First scanned receipt has no previous receipt hash."
+                ))
+            }
+
+            previousHash = sha256
+        }
+
+        if items.isEmpty {
+            issues.append(AuditChainIssue(
+                id: "receipt.chain.empty",
+                path: nil,
+                severity: .warning,
+                title: "No receipts found",
+                detail: "No .receipt.json files were available to verify."
+            ))
+        }
+
+        return AuditChainReport(path: path, receiptCount: verifiedReceipts, issues: issues)
+    }
+
+    private func receiptItemSort(_ left: AuditInventoryItem, _ right: AuditInventoryItem) -> Bool {
+        switch (left.receipt?.createdAt, right.receipt?.createdAt) {
+        case let (leftDate?, rightDate?):
+            return leftDate == rightDate ? left.path < right.path : leftDate < rightDate
+        case (_?, nil):
+            return false
+        case (nil, _?):
+            return true
+        case (nil, nil):
+            return left.path < right.path
         }
     }
 }

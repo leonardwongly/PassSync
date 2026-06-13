@@ -180,6 +180,12 @@ swift run passsync restore-verify \
 
 Successful apply commands write non-secret receipts under `~/.passsync/audit`. Inspect those receipts after isolated live apply to confirm the backup path, action count, previous receipt hash, and post-apply verification summary.
 
+Verify the local receipt hash chain:
+
+```sh
+swift run passsync audit-verify --input "$HOME/.passsync/audit"
+```
+
 ## Backup Migration Test
 
 Rewrite a backup with the current backup envelope:
@@ -213,6 +219,7 @@ jq empty /tmp/passsync-sim-decisions.json
 "$BIN_DIR/passsync" backup-list --backup-path /tmp/passsync-empty-backups
 mkdir -p /tmp/passsync-empty-audit
 "$BIN_DIR/passsync" audit-list --input /tmp/passsync-empty-audit
+"$BIN_DIR/passsync" audit-verify --input /tmp/passsync-empty-audit
 "$BIN_DIR/passsync" doctor --op-path /bin/echo --audit-path /tmp/passsync-empty-audit --release-script Scripts/package_release.sh
 rm -f /tmp/passsync-ci-state.sqlite
 "$BIN_DIR/passsync" state-record-simulation --input Examples/simulation-state.json --state-path /tmp/passsync-ci-state.sqlite

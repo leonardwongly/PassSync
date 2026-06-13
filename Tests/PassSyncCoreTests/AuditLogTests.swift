@@ -126,6 +126,50 @@ import Testing
     #expect(decodedSecond.previousReceiptSHA256 == firstHash)
 }
 
+@Test func auditChainVerifierPassesIntactReceiptChain() throws {
+    let directory = try writeTwoReceiptChain()
+
+    let report = AuditChainVerifier().verify(path: directory.path)
+
+    #expect(report.receiptCount == 2)
+    #expect(!report.hasFailures)
+    #expect(report.issues.map(\.severity) == [.pass, .pass])
+}
+
+@Test func auditChainVerifierFailsWhenPriorReceiptChanges() throws {
+    let directory = try writeTwoReceiptChain()
+    let firstReceipt = try #require(
+        FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            .first { $0.lastPathComponent.contains("passsync-sync-") }
+    )
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    var receipt = try decoder.decode(ApplyReceipt.self, from: Data(contentsOf: firstReceipt))
+    receipt.backupPath = "/tmp/tampered.psbackup"
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    encoder.dateEncodingStrategy = .iso8601
+    try encoder.encode(receipt).write(to: firstReceipt, options: [.atomic])
+
+    let report = AuditChainVerifier().verify(path: directory.path)
+
+    #expect(report.hasFailures)
+    #expect(report.failureCount == 1)
+    #expect(report.issues.contains { $0.title == "Receipt chain link mismatch" })
+}
+
+@Test func auditChainVerifierFailsMalformedReceiptFiles() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    try Data("{ not json".utf8).write(to: directory.appendingPathComponent("bad.receipt.json"))
+
+    let report = AuditChainVerifier().verify(path: directory.path)
+
+    #expect(report.hasFailures)
+    #expect(report.failureCount == 1)
+    #expect(report.issues[0].title == "Receipt could not be decoded")
+}
+
 @Test func auditInventoryReportsMissingPath() {
     let missing = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 
@@ -133,4 +177,43 @@ import Testing
 
     #expect(items.count == 1)
     #expect(items[0].error == "Path does not exist.")
+}
+
+private func writeTwoReceiptChain() throws -> URL {
+    let firstDate = try #require(ISO8601DateFormatter().date(from: "2026-06-13T01:00:00Z"))
+    let secondDate = try #require(ISO8601DateFormatter().date(from: "2026-06-13T01:01:00Z"))
+    let plan = SyncPlan(
+        direction: .bidirectional,
+        truthSource: .none,
+        conflictPolicy: .fail,
+        actions: [],
+        warnings: []
+    )
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    _ = try AuditLog().writeReceipt(
+        ApplyReceipt(
+            createdAt: firstDate,
+            operation: .sync,
+            backupPath: "/tmp/passsync-first.psbackup",
+            direction: plan.direction,
+            truthSource: plan.truthSource,
+            conflictPolicy: plan.conflictPolicy,
+            plan: plan
+        ),
+        directoryPath: directory.path
+    )
+    _ = try AuditLog().writeReceipt(
+        ApplyReceipt(
+            createdAt: secondDate,
+            operation: .restore,
+            backupPath: "/tmp/passsync-second.psbackup",
+            direction: plan.direction,
+            truthSource: plan.truthSource,
+            conflictPolicy: plan.conflictPolicy,
+            restoreTarget: .onePassword,
+            plan: plan
+        ),
+        directoryPath: directory.path
+    )
+    return directory
 }
