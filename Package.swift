@@ -8,6 +8,7 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
+        .executable(name: "PassSync", targets: ["PassSyncMac"]),
         .executable(name: "passsync", targets: ["passsync"]),
         .library(name: "PassSyncCore", targets: ["PassSyncCore"])
     ],
@@ -20,6 +21,13 @@ let package = Package(
         ),
         .executableTarget(
             name: "passsync",
+            dependencies: ["PassSyncCore"],
+            swiftSettings: [
+                .enableExperimentalFeature("StrictConcurrency")
+            ]
+        ),
+        .executableTarget(
+            name: "PassSyncMac",
             dependencies: ["PassSyncCore"],
             swiftSettings: [
                 .enableExperimentalFeature("StrictConcurrency")

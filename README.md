@@ -28,7 +28,7 @@ PassSync is not a complete password-manager migration tool. These limitations ar
 - **Continuous sync is not implemented.** v1 is one-time plan/apply only. It does not watch for changes or run in the background.
 - **The interactive conflict resolver is basic.** During `sync --apply`, conflicts can be resolved one by one, skipped, or aborted. There is no richer review UI yet.
 - **No restore command exists yet.** PassSync can create and validate encrypted backups, but it does not yet restore provider state from a backup.
-- **No native macOS app exists yet.** The planned SwiftUI app is future work.
+- **The native macOS app is local-build only.** A SwiftUI app target exists, but signing, notarization, releases, and installer packaging are not implemented yet.
 - **Apple Passwords behavior depends on local Keychain permissions and iCloud Keychain state.** Test in simulation or an isolated macOS user/VM before using `--apply` on your primary account.
 
 If any item above appears in a plan as `unsupported`, PassSync should be treated as working as designed, not as having completed that part of the migration.
@@ -47,6 +47,19 @@ Build and test:
 ```sh
 swift build
 swift test
+```
+
+Build the native macOS app target:
+
+```sh
+swift build --product PassSync
+```
+
+Create a local `.app` bundle:
+
+```sh
+Scripts/package_app.sh
+open .build/debug/PassSync.app
 ```
 
 Run a safe preflight. This checks local tool availability but does not enumerate credentials:
@@ -96,6 +109,18 @@ The executable is produced at:
 
 ```sh
 .build/debug/passsync
+```
+
+The native macOS app executable is produced at:
+
+```sh
+.build/debug/PassSync
+```
+
+The local app bundle script writes:
+
+```sh
+.build/debug/PassSync.app
 ```
 
 ## Usage
@@ -269,9 +294,10 @@ v2 candidates:
 - First-class interactive conflict resolver.
 - Stronger backup KDF such as PBKDF2 or Argon2.
 
-v2/v3 candidate:
+v2/v3 candidates:
 
-- Native SwiftUI macOS app.
+- Signing, notarization, and release packaging for the native macOS app.
+- Richer SwiftUI conflict review and backup restore flows.
 
 ## License
 
