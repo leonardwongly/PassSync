@@ -18,6 +18,7 @@ final class AppModel: ObservableObject {
     @Published var recoveryMessage: String?
     @Published var recoveryError: String?
     @Published var backupInventory: [BackupInventoryItem] = []
+    @Published var auditInventory: [AuditInventoryItem] = []
     @Published var isRunningSimulation = false
     @Published var isRunningLivePlan = false
     @Published var isApplyingLivePlan = false
@@ -50,6 +51,7 @@ final class AppModel: ObservableObject {
     @Published var decisionPlanTarget: DecisionPlanTarget = .live
     @Published var loadedDecisionFile: PlanDecisionFile?
     @Published var backupInventoryPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups"
+    @Published var auditInventoryPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/audit"
 
     private var liveSnapshot: (onePassword: [CredentialRecord], apple: [CredentialRecord])?
     private var restoreSnapshot: [CredentialRecord]?
@@ -447,6 +449,14 @@ final class AppModel: ObservableObject {
         backupInventory = items
         recoveryError = nil
         recoveryMessage = "Found \(items.count) backup item(s)."
+    }
+
+    func loadAuditInventory() {
+        let path = auditInventoryPath
+        let items = AuditInventory().scan(path: path)
+        auditInventory = items
+        recoveryError = nil
+        recoveryMessage = "Found \(items.count) audit receipt item(s)."
     }
 
     private func writeSimulationState(_ state: SimulationState, path: String) throws {

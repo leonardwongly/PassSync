@@ -50,7 +50,7 @@ PassSync is not a complete password-manager migration tool. These are the curren
 - **Release artifacts are unsigned.** `Scripts/package_release.sh` creates local unsigned archives with checksums. Public distribution still requires Developer ID signing and notarization.
 - **Restore is provider-visible login recovery only.** Restore can plan/apply backed-up website/app login records for one provider at a time. It still blocks passkey evidence and Apple-destination TOTP unless explicitly allowed as password-only.
 - **Restore verification is provider-visible only.** `restore-verify` checks backed-up website/app login records against the selected provider, but it cannot prove passkey private key material, Apple verification-code entries, or iCloud Keychain propagation.
-- **Audit receipts are not a tamper-proof log.** Receipts are local JSON files for operator evidence. They are not signed, notarized, append-only, or stored in a hardened database.
+- **Audit receipts are not a tamper-proof log.** Receipts are local JSON files for operator evidence. `audit-list` reports file hashes, but receipts are not signed, notarized, append-only, or stored in a hardened database.
 
 ### Deliberately Not Attempted
 
@@ -308,6 +308,14 @@ $HOME/.passsync/audit
 
 Receipts include action keys, action kinds, backup paths, and post-apply verification summaries. They do not include passwords or TOTP seeds.
 
+List local receipts and their SHA-256 hashes:
+
+```sh
+swift run passsync audit-list --input "$HOME/.passsync/audit"
+```
+
+The SwiftUI Recovery screen can scan both backup files and audit receipts.
+
 ## Simulation
 
 Use `simulate` to test planning and apply behavior without touching 1Password, Apple Passwords, Keychain, or backups. Simulation reads a JSON state file and, with `--apply`, writes a new output state file. The input is never modified in place.
@@ -464,7 +472,7 @@ Use that flag only after reviewing the plan.
 - **SwiftUI decision workflow hardening.** Add richer validation, batch controls, and clearer warnings when a decision file does not match the current plan.
 - **Restore UI hardening.** Add richer SwiftUI restore verification, restore history, and clearer pre-restore backup evidence.
 - **Doctor expansion.** Add more checks for `op` authentication edge cases, Keychain read/write probes, app signing state, and risky iCloud Keychain conditions.
-- **Audit hardening.** Sign or hash-chain receipts, add receipt inventory, and make post-apply verification failures more visible.
+- **Audit hardening.** Sign or hash-chain receipts and make post-apply verification failures more visible.
 - **Signed macOS distribution.** Add Developer ID signing, hardened runtime, notarization, stapling, and release automation.
 - **Malformed-input fixtures.** Add explicit invalid fixture cases for CLI parser and error-message regression tests.
 

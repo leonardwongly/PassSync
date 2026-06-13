@@ -192,6 +192,8 @@ jq empty /tmp/passsync-minimal.json
 "$BIN_DIR/passsync" simulate --input Examples/simulation-state.json --direction bidirectional --output /tmp/passsync-sim-decisions.json
 jq empty /tmp/passsync-sim-decisions.json
 "$BIN_DIR/passsync" backup-list --backup-path /tmp/passsync-empty-backups
+mkdir -p /tmp/passsync-empty-audit
+"$BIN_DIR/passsync" audit-list --input /tmp/passsync-empty-audit
 Scripts/package_release.sh /tmp/passsync-release-artifacts
 ```
 

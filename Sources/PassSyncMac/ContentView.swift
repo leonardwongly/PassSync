@@ -461,6 +461,17 @@ private struct RecoveryView: View {
                     }
                 }
 
+                GroupBox("Audit Receipts") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("Audit path", text: $model.auditInventoryPath)
+                        Button {
+                            model.loadAuditInventory()
+                        } label: {
+                            Label("Scan Receipts", systemImage: "list.bullet.rectangle")
+                        }
+                    }
+                }
+
                 if let message = model.recoveryMessage {
                     MessageBanner(message: message, style: .info)
                 }
@@ -478,6 +489,12 @@ private struct RecoveryView: View {
                 } else {
                     ForEach(model.backupInventory) { item in
                         BackupInventoryRow(item: item)
+                    }
+                }
+
+                if !model.auditInventory.isEmpty {
+                    ForEach(model.auditInventory) { item in
+                        AuditInventoryRow(item: item)
                     }
                 }
             }
@@ -521,6 +538,57 @@ private struct BackupInventoryRow: View {
                     .font(.subheadline)
                 } else {
                     Label(item.error ?? "Could not inspect backup.", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private struct AuditInventoryRow: View {
+    var item: AuditInventoryItem
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(item.path)
+                    .font(.headline)
+                    .textSelection(.enabled)
+                HStack {
+                    Label("\(item.fileSize) bytes", systemImage: "doc")
+                    if let modifiedAt = item.modifiedAt {
+                        Label(modifiedAt.formatted(date: .abbreviated, time: .shortened), systemImage: "clock")
+                    }
+                }
+                .foregroundStyle(.secondary)
+                if let receipt = item.receipt {
+                    Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
+                        GridRow {
+                            Text("Operation").foregroundStyle(.secondary)
+                            Text(receipt.operation.rawValue)
+                        }
+                        GridRow {
+                            Text("Created").foregroundStyle(.secondary)
+                            Text(receipt.createdAt.formatted(date: .abbreviated, time: .shortened))
+                        }
+                        GridRow {
+                            Text("Actions").foregroundStyle(.secondary)
+                            Text("\(receipt.actionCount)")
+                        }
+                        GridRow {
+                            Text("Mutating").foregroundStyle(.secondary)
+                            Text("\(receipt.mutatingActionCount)")
+                        }
+                        GridRow {
+                            Text("SHA-256").foregroundStyle(.secondary)
+                            Text(item.sha256 ?? "unknown")
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .font(.subheadline)
+                } else {
+                    Label(item.error ?? "Could not inspect receipt.", systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.orange)
                 }
             }

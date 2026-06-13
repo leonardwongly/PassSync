@@ -41,6 +41,8 @@ jobs:
           jq empty /tmp/passsync-minimal.json
           mkdir -p /tmp/passsync-empty-backups
           "$BIN_DIR/passsync" backup-list --backup-path /tmp/passsync-empty-backups
+          mkdir -p /tmp/passsync-empty-audit
+          "$BIN_DIR/passsync" audit-list --input /tmp/passsync-empty-audit
 
       - name: Package unsigned release archive
         run: Scripts/package_release.sh /tmp/passsync-release-artifacts

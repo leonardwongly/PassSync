@@ -46,6 +46,8 @@ struct PassSyncCLI {
             try backupList(args)
         case "backup-migrate":
             try backupMigrate(args)
+        case "audit-list":
+            try auditList(args)
         case "restore-check":
             try restoreCheck(args)
         case "restore-verify":
@@ -299,6 +301,35 @@ struct PassSyncCLI {
             }
         }
     }
+
+    private static func auditList(_ args: [String]) throws {
+        let options = try CLIOptions(args: args)
+        let path = options.inputPath ?? defaultAuditPath()
+        let items = AuditInventory().scan(path: path)
+        if options.json {
+            printJSON(items)
+            return
+        }
+
+        print("PassSync audit inventory")
+        print("- path: \(path)")
+        print("- receipts: \(items.count)")
+        for item in items {
+            if let receipt = item.receipt {
+                print("[OK] \(item.path)")
+                print("  - operation: \(receipt.operation.rawValue)")
+                print("  - created: \(receipt.createdAt)")
+                print("  - actions: \(receipt.actionCount)")
+                print("  - mutating actions: \(receipt.mutatingActionCount)")
+                print("  - backup: \(receipt.backupPath)")
+                print("  - sha256: \(item.sha256 ?? "unknown")")
+            } else {
+                print("[WARN] \(item.path)")
+                print("  - error: \(item.error ?? "Could not inspect receipt.")")
+            }
+        }
+    }
+
 
     private static func backupMigrate(_ args: [String]) throws {
         let options = try CLIOptions(args: args)
@@ -827,6 +858,7 @@ struct PassSyncCLI {
       passsync backup [--backup-path PATH] [--vault VAULT]
       passsync backup-list [--backup-path FILE_OR_DIR] [--json]
       passsync backup-migrate --input PATH --output PATH [--json]
+      passsync audit-list [--input FILE_OR_DIR] [--json]
       passsync restore-check --backup-path PATH
       passsync restore-verify --backup-path PATH --to 1password|apple-passwords [options]
       passsync restore-plan --backup-path PATH --to 1password|apple-passwords [options]

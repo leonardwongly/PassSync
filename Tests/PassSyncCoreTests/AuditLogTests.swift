@@ -52,3 +52,42 @@ import Testing
     #expect(decoded.operation == .sync)
     #expect(decoded.mutatingActionCount == 1)
 }
+
+@Test func auditInventoryDecodesReceiptAndComputesFileHash() throws {
+    let plan = SyncPlan(
+        direction: .appleToOnePassword,
+        truthSource: .applePasswords,
+        conflictPolicy: .fail,
+        actions: [],
+        warnings: []
+    )
+    let receipt = ApplyReceipt(
+        operation: .restore,
+        backupPath: "/tmp/passsync-test.psbackup",
+        direction: plan.direction,
+        truthSource: plan.truthSource,
+        conflictPolicy: plan.conflictPolicy,
+        restoreTarget: .onePassword,
+        plan: plan
+    )
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let path = try AuditLog().writeReceipt(receipt, directoryPath: directory.path)
+    let expectedHash = SHA256Fingerprint.hex(try Data(contentsOf: URL(fileURLWithPath: path)))
+
+    let items = AuditInventory().scan(path: directory.path)
+
+    #expect(items.count == 1)
+    #expect(items[0].sha256 == expectedHash)
+    #expect(items[0].receipt?.operation == .restore)
+    #expect(items[0].receipt?.restoreTarget == .onePassword)
+    #expect(items[0].error == nil)
+}
+
+@Test func auditInventoryReportsMissingPath() {
+    let missing = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+
+    let items = AuditInventory().scan(path: missing.path)
+
+    #expect(items.count == 1)
+    #expect(items[0].error == "Path does not exist.")
+}

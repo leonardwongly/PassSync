@@ -111,3 +111,98 @@ public struct AuditLog: Sendable {
         return path
     }
 }
+
+public struct AuditInventoryItem: Codable, Equatable, Sendable, Identifiable {
+    public var path: String
+    public var fileSize: UInt64
+    public var modifiedAt: Date?
+    public var sha256: String?
+    public var receipt: ApplyReceipt?
+    public var error: String?
+
+    public init(
+        path: String,
+        fileSize: UInt64,
+        modifiedAt: Date?,
+        sha256: String?,
+        receipt: ApplyReceipt?,
+        error: String?
+    ) {
+        self.path = path
+        self.fileSize = fileSize
+        self.modifiedAt = modifiedAt
+        self.sha256 = sha256
+        self.receipt = receipt
+        self.error = error
+    }
+
+    public var id: String { path }
+}
+
+public struct AuditInventory: Sendable {
+    public init() {}
+
+    public func scan(path: String) -> [AuditInventoryItem] {
+        let url = URL(fileURLWithPath: path)
+        let fileManager = FileManager.default
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            return [
+                AuditInventoryItem(
+                    path: url.path,
+                    fileSize: 0,
+                    modifiedAt: nil,
+                    sha256: nil,
+                    receipt: nil,
+                    error: "Path does not exist."
+                )
+            ]
+        }
+
+        let files: [URL]
+        if isDirectory.boolValue {
+            files = (try? fileManager.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ))?.filter { candidate in
+                candidate.lastPathComponent.hasSuffix(".receipt.json")
+            } ?? []
+        } else {
+            files = [url]
+        }
+
+        return files
+            .sorted { $0.path < $1.path }
+            .map(item)
+    }
+
+    private func item(for url: URL) -> AuditInventoryItem {
+        let resourceValues = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        let size = UInt64(resourceValues?.fileSize ?? 0)
+        let modifiedAt = resourceValues?.contentModificationDate
+        do {
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let receipt = try decoder.decode(ApplyReceipt.self, from: data)
+            return AuditInventoryItem(
+                path: url.path,
+                fileSize: size,
+                modifiedAt: modifiedAt,
+                sha256: SHA256Fingerprint.hex(data),
+                receipt: receipt,
+                error: nil
+            )
+        } catch {
+            return AuditInventoryItem(
+                path: url.path,
+                fileSize: size,
+                modifiedAt: modifiedAt,
+                sha256: nil,
+                receipt: nil,
+                error: String(describing: error)
+            )
+        }
+    }
+}
