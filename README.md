@@ -255,3 +255,7 @@ v2 candidates:
 v2/v3 candidate:
 
 - Native SwiftUI macOS app.
+
+## License
+
+PassSync is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
