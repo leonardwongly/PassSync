@@ -44,7 +44,7 @@ PassSync is not a complete password-manager migration tool. These are the curren
 ### Not Built Yet
 
 - **Continuous sync is not implemented.** v1 is one-time plan/apply only. It does not watch for changes or run in the background.
-- **Field-level conflict merge is decision-file based.** The CLI can apply reviewed per-field merge decisions from JSON decision files, but the interactive CLI prompt is still per-record and the SwiftUI app can export but not yet edit/import/apply decision files.
+- **Field-level conflict merge is decision-file based.** The CLI and SwiftUI app can apply reviewed per-field merge decisions from JSON decision files, but the interactive CLI prompt is still per-record.
 - **Only website/app login records are in scope.** Secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, custom item types, and arbitrary custom fields are not synced.
 - **The native macOS app is local-build only.** A SwiftUI app target exists and unsigned release archives can be created locally, but Developer ID signing, notarization, auto-update, and installer packaging are not implemented.
 - **Release artifacts are unsigned.** `Scripts/package_release.sh` creates local unsigned archives with checksums. Public distribution still requires Developer ID signing and notarization.
@@ -238,6 +238,8 @@ swift run passsync sync \
 ```
 
 Valid decision values are `applyOriginal`, `skip`, `useOnePassword`, `useApplePasswords`, and `mergeFields`. For `mergeFields`, each changed field except `modifiedAt` must have a provider choice in `fieldDecisions`.
+
+The SwiftUI app can also load, edit, save, and apply decision files from the Conflict Review screen. Apply decisions to the selected simulation, live, or restore plan, then review the adjusted plan before using the relevant apply button.
 
 ## Backup
 
@@ -459,7 +461,7 @@ Use that flag only after reviewing the plan.
 
 ### Near Term
 
-- **SwiftUI decision workflow.** Add native editing, import, validation, and apply for decision files instead of export-only review.
+- **SwiftUI decision workflow hardening.** Add richer validation, batch controls, and clearer warnings when a decision file does not match the current plan.
 - **Restore UI hardening.** Add richer SwiftUI restore verification, restore history, and clearer pre-restore backup evidence.
 - **Doctor expansion.** Add more checks for `op` authentication edge cases, Keychain read/write probes, app signing state, and risky iCloud Keychain conditions.
 - **Audit hardening.** Sign or hash-chain receipts, add receipt inventory, and make post-apply verification failures more visible.

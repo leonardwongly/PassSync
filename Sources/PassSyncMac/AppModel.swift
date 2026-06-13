@@ -46,6 +46,9 @@ final class AppModel: ObservableObject {
     @Published var restorePassphrase = ""
     @Published var restoreAllowPasswordOnly = false
     @Published var decisionOutputPath = "/tmp/passsync-decisions.json"
+    @Published var decisionInputPath = "/tmp/passsync-decisions.json"
+    @Published var decisionPlanTarget: DecisionPlanTarget = .live
+    @Published var loadedDecisionFile: PlanDecisionFile?
     @Published var backupInventoryPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups"
 
     private var liveSnapshot: (onePassword: [CredentialRecord], apple: [CredentialRecord])?
@@ -337,6 +340,107 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func loadDecisionFile() {
+        do {
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            loadedDecisionFile = try decoder.decode(
+                PlanDecisionFile.self,
+                from: Data(contentsOf: URL(fileURLWithPath: decisionInputPath))
+            )
+            conflictReviewError = nil
+            conflictReviewMessage = "Loaded \(loadedDecisionFile?.decisions.count ?? 0) decision(s) from \(decisionInputPath)."
+        } catch {
+            conflictReviewMessage = nil
+            conflictReviewError = "Could not load decision file: \(error)"
+        }
+    }
+
+    func saveLoadedDecisionFile() {
+        guard let loadedDecisionFile else {
+            conflictReviewError = "Load or export a decision file first."
+            return
+        }
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let outputURL = URL(fileURLWithPath: decisionOutputPath)
+            try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try encoder.encode(loadedDecisionFile).write(to: outputURL, options: [.atomic])
+            conflictReviewError = nil
+            conflictReviewMessage = "Saved edited decision file to \(decisionOutputPath)."
+        } catch {
+            conflictReviewMessage = nil
+            conflictReviewError = "Could not save decision file: \(error)"
+        }
+    }
+
+    func applyLoadedDecisionFileToSelectedPlan() {
+        guard let loadedDecisionFile else {
+            conflictReviewError = "Load or export a decision file first."
+            return
+        }
+
+        switch decisionPlanTarget {
+        case .simulation:
+            guard let simulationPlan else {
+                conflictReviewError = "Run a simulation plan before applying decisions to it."
+                return
+            }
+            self.simulationPlan = PlanDecisionFiles.apply(
+                loadedDecisionFile,
+                to: simulationPlan,
+                allowPasswordOnlyForUnsupportedSecurityMaterial: simulationAllowPasswordOnly
+            )
+        case .live:
+            guard let livePlan else {
+                conflictReviewError = "Run a live plan before applying decisions to it."
+                return
+            }
+            self.livePlan = PlanDecisionFiles.apply(
+                loadedDecisionFile,
+                to: livePlan,
+                allowPasswordOnlyForUnsupportedSecurityMaterial: liveAllowPasswordOnly
+            )
+        case .restore:
+            guard let restorePlan else {
+                conflictReviewError = "Run a restore plan before applying decisions to it."
+                return
+            }
+            self.restorePlan = PlanDecisionFiles.apply(
+                loadedDecisionFile,
+                to: restorePlan,
+                allowPasswordOnlyForUnsupportedSecurityMaterial: restoreAllowPasswordOnly
+            )
+        }
+
+        conflictReviewError = nil
+        conflictReviewMessage = "Applied reviewed decisions to the \(decisionPlanTarget.displayTitle) plan. Review the adjusted plan before applying."
+    }
+
+    func setDecisionKind(actionID: String, kind: PlanDecisionKind) {
+        guard var file = loadedDecisionFile,
+              let index = file.decisions.firstIndex(where: { $0.id == actionID }) else {
+            return
+        }
+        file.decisions[index].decision = kind
+        loadedDecisionFile = file
+    }
+
+    func setFieldDecision(actionID: String, field: CredentialField, provider: Provider) {
+        guard var file = loadedDecisionFile,
+              let actionIndex = file.decisions.firstIndex(where: { $0.id == actionID }) else {
+            return
+        }
+        if let fieldIndex = file.decisions[actionIndex].fieldDecisions.firstIndex(where: { $0.field == field }) {
+            file.decisions[actionIndex].fieldDecisions[fieldIndex].provider = provider
+        } else {
+            file.decisions[actionIndex].fieldDecisions.append(PlanFieldDecision(field: field, provider: provider))
+        }
+        loadedDecisionFile = file
+    }
+
     func loadBackupInventory() {
         let path = backupInventoryPath
         let items = BackupInventory().scan(path: path)
@@ -357,6 +461,25 @@ final class AppModel: ObservableObject {
     private func normalizedVault(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+enum DecisionPlanTarget: String, CaseIterable, Identifiable {
+    case simulation
+    case live
+    case restore
+
+    var id: String { rawValue }
+
+    var displayTitle: String {
+        switch self {
+        case .simulation:
+            return "Simulation"
+        case .live:
+            return "Live"
+        case .restore:
+            return "Restore"
+        }
     }
 }
 
@@ -483,6 +606,38 @@ extension RestoreTarget: Identifiable {
             return "1Password"
         case .applePasswords:
             return "Apple Passwords"
+        }
+    }
+}
+
+extension PlanDecisionKind: Identifiable {
+    public var id: String { rawValue }
+
+    var displayTitle: String {
+        switch self {
+        case .applyOriginal:
+            return "Apply Original"
+        case .skip:
+            return "Skip"
+        case .useOnePassword:
+            return "Use 1Password"
+        case .useApplePasswords:
+            return "Use Apple"
+        case .mergeFields:
+            return "Merge Fields"
+        }
+    }
+}
+
+extension Provider: Identifiable {
+    public var id: String { rawValue }
+
+    var displayTitle: String {
+        switch self {
+        case .onePassword:
+            return "1Password"
+        case .applePasswords:
+            return "Apple"
         }
     }
 }

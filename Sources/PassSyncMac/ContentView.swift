@@ -294,13 +294,38 @@ private struct ConflictReviewView: View {
 
                 GroupBox("Decision File") {
                     VStack(alignment: .leading, spacing: 10) {
-                        TextField("Decision output path", text: $model.decisionOutputPath)
-                        Button {
-                            model.exportLatestDecisionFile()
-                        } label: {
-                            Label("Export Decisions", systemImage: "square.and.arrow.down")
+                        Picker("Target plan", selection: $model.decisionPlanTarget) {
+                            ForEach(DecisionPlanTarget.allCases) { target in
+                                Text(target.displayTitle).tag(target)
+                            }
                         }
-                        .disabled(model.livePlan == nil && model.simulationPlan == nil && model.restorePlan == nil)
+                        TextField("Decision input path", text: $model.decisionInputPath)
+                        TextField("Decision output path", text: $model.decisionOutputPath)
+                        HStack {
+                            Button {
+                                model.loadDecisionFile()
+                            } label: {
+                                Label("Load", systemImage: "folder")
+                            }
+                            Button {
+                                model.exportLatestDecisionFile()
+                            } label: {
+                                Label("Export", systemImage: "square.and.arrow.down")
+                            }
+                            .disabled(model.livePlan == nil && model.simulationPlan == nil && model.restorePlan == nil)
+                            Button {
+                                model.saveLoadedDecisionFile()
+                            } label: {
+                                Label("Save", systemImage: "square.and.arrow.down.on.square")
+                            }
+                            .disabled(model.loadedDecisionFile == nil)
+                            Button {
+                                model.applyLoadedDecisionFileToSelectedPlan()
+                            } label: {
+                                Label("Apply to Plan", systemImage: "checkmark.rectangle.stack")
+                            }
+                            .disabled(model.loadedDecisionFile == nil)
+                        }
                     }
                 }
 
@@ -323,9 +348,93 @@ private struct ConflictReviewView: View {
                         ConflictDiffPanel(action: action)
                     }
                 }
+
+                if let decisionFile = model.loadedDecisionFile {
+                    DecisionFileEditor(file: decisionFile)
+                }
             }
             .padding(28)
             .frame(maxWidth: 1040, alignment: .leading)
+        }
+    }
+}
+
+private struct DecisionFileEditor: View {
+    @EnvironmentObject private var model: AppModel
+    var file: PlanDecisionFile
+
+    var body: some View {
+        GroupBox("Loaded Decisions") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label(file.format, systemImage: "doc.badge.gearshape")
+                    Spacer()
+                    Text("\(file.decisions.count) decision\(file.decisions.count == 1 ? "" : "s")")
+                        .foregroundStyle(.secondary)
+                }
+
+                ForEach(file.decisions) { decision in
+                    DecisionEditorRow(decision: decision)
+                    Divider()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private struct DecisionEditorRow: View {
+    @EnvironmentObject private var model: AppModel
+    var decision: PlanActionDecision
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(decision.key.description)
+                        .font(.headline)
+                    Text(decision.originalKind.rawValue)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Picker("Decision", selection: Binding(
+                    get: { decision.decision },
+                    set: { model.setDecisionKind(actionID: decision.id, kind: $0) }
+                )) {
+                    ForEach(PlanDecisionKind.allCases) { kind in
+                        Text(kind.displayTitle).tag(kind)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 220)
+            }
+
+            if !decision.fieldDecisions.isEmpty {
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+                    GridRow {
+                        Text("Field").font(.caption.weight(.semibold))
+                        Text("Provider").font(.caption.weight(.semibold))
+                    }
+                    ForEach(decision.fieldDecisions) { fieldDecision in
+                        GridRow {
+                            Text(fieldDecision.field.rawValue)
+                                .foregroundStyle(.secondary)
+                            Picker("Provider", selection: Binding(
+                                get: { fieldDecision.provider },
+                                set: { model.setFieldDecision(actionID: decision.id, field: fieldDecision.field, provider: $0) }
+                            )) {
+                                ForEach(Provider.allCases) { provider in
+                                    Text(provider.displayTitle).tag(provider)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(maxWidth: 180)
+                        }
+                    }
+                }
+                .font(.subheadline)
+            }
         }
     }
 }
