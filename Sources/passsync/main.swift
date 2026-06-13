@@ -153,6 +153,14 @@ struct PassSyncCLI {
             appleRecords: appleRecords,
             options: syncOptions
         )
+        if let decisionPath = options.decisionFilePath {
+            let decisions = try readDecisionFile(path: decisionPath)
+            syncPlan = PlanDecisionFiles.apply(
+                decisions,
+                to: syncPlan,
+                allowPasswordOnlyForUnsupportedSecurityMaterial: options.allowPasswordOnly
+            )
+        }
 
         if options.json {
             let encoder = JSONEncoder()
@@ -162,6 +170,13 @@ struct PassSyncCLI {
             print(String(data: try encoder.encode(redacted), encoding: .utf8) ?? "{}")
         } else {
             printPlan(syncPlan)
+        }
+
+        if let outputPath = options.outputPath {
+            try writeDecisionFile(PlanDecisionFiles.export(from: syncPlan), path: outputPath)
+            if !options.json {
+                print("\nDecision file written: \(outputPath)")
+            }
         }
 
         guard apply else {
@@ -309,6 +324,14 @@ struct PassSyncCLI {
             target: target,
             allowPasswordOnlyForUnsupportedSecurityMaterial: options.allowPasswordOnly
         )
+        if let decisionPath = options.decisionFilePath {
+            let decisions = try readDecisionFile(path: decisionPath)
+            restorePlan = PlanDecisionFiles.apply(
+                decisions,
+                to: restorePlan,
+                allowPasswordOnlyForUnsupportedSecurityMaterial: options.allowPasswordOnly
+            )
+        }
 
         if options.json {
             printJSON(SecretRedactor.redactPlan(restorePlan))
@@ -317,6 +340,13 @@ struct PassSyncCLI {
             print("- target: \(target.rawValue)")
             print("- backup: \(path)")
             printPlan(restorePlan)
+        }
+
+        if let outputPath = options.outputPath {
+            try writeDecisionFile(PlanDecisionFiles.export(from: restorePlan), path: outputPath)
+            if !options.json {
+                print("\nDecision file written: \(outputPath)")
+            }
         }
 
         guard apply else {
@@ -385,6 +415,14 @@ struct PassSyncCLI {
             appleRecords: try store.fetchLogins(),
             options: syncOptions
         )
+        if let decisionPath = options.decisionFilePath {
+            let decisions = try readDecisionFile(path: decisionPath)
+            syncPlan = PlanDecisionFiles.apply(
+                decisions,
+                to: syncPlan,
+                allowPasswordOnlyForUnsupportedSecurityMaterial: options.allowPasswordOnly
+            )
+        }
 
         if options.json {
             let encoder = JSONEncoder()
@@ -396,6 +434,12 @@ struct PassSyncCLI {
         }
 
         guard apply else {
+            if let outputPath = options.outputPath {
+                try writeDecisionFile(PlanDecisionFiles.export(from: syncPlan), path: outputPath)
+                if !options.json {
+                    print("\nDecision file written: \(outputPath)")
+                }
+            }
             if !options.json {
                 print("\nSimulation dry run only. Re-run with `--apply --output <path>` to write a simulated result state.")
             }
@@ -607,6 +651,25 @@ struct PassSyncCLI {
         try encoder.encode(state).write(to: outputURL, options: [.atomic])
     }
 
+    private static func readDecisionFile(path: String) throws -> PlanDecisionFile {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        do {
+            return try decoder.decode(PlanDecisionFile.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        } catch {
+            throw PassSyncError.decodingFailed("Could not decode decision file \(path): \(error)")
+        }
+    }
+
+    private static func writeDecisionFile(_ decisions: PlanDecisionFile, path: String) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let outputURL = URL(fileURLWithPath: path)
+        try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try encoder.encode(decisions).write(to: outputURL, options: [.atomic])
+    }
+
     private static let usage = """
     passsync - one-time password sync between 1Password and Apple Passwords
 
@@ -632,7 +695,8 @@ struct PassSyncCLI {
       --backup-path PATH         Encrypted backup path. Required for restore-check; defaulted for backup/apply.
       --to VALUE                 Restore target: 1password|apple-passwords.
       --input PATH               Simulation input state JSON or backup-migrate source.
-      --output PATH              Simulation output state JSON for --apply or backup-migrate destination.
+      --output PATH              Simulation apply output, backup-migrate destination, or dry-run decision-file export path.
+      --decision-file PATH       Apply reviewed decisions from a decision file to a freshly built plan or simulation.
       --app-bundle PATH          App bundle path for doctor checks.
       --op-path PATH             Path to op. Default: /opt/homebrew/bin/op.
       --json                     Print redacted JSON plan.
@@ -657,6 +721,7 @@ private struct CLIOptions {
     var restoreTarget: RestoreTarget?
     var inputPath: String?
     var outputPath: String?
+    var decisionFilePath: String?
     var appBundlePath: String?
     var opPath = "/opt/homebrew/bin/op"
     var json = false
@@ -685,6 +750,8 @@ private struct CLIOptions {
                 inputPath = try Self.value(after: arg, in: args, index: &index)
             case "--output":
                 outputPath = try Self.value(after: arg, in: args, index: &index)
+            case "--decision-file":
+                decisionFilePath = try Self.value(after: arg, in: args, index: &index)
             case "--app-bundle":
                 appBundlePath = try Self.value(after: arg, in: args, index: &index)
             case "--op-path":

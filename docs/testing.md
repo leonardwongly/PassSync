@@ -49,6 +49,24 @@ swift run passsync simulate \
 
 The simulator writes only the output JSON file. It does not touch 1Password, Apple Passwords, Keychain, or backup directories.
 
+Export and re-read a decision file offline:
+
+```sh
+swift run passsync simulate \
+  --input Examples/simulation-state.json \
+  --direction bidirectional \
+  --vault PassSync-Test \
+  --output /tmp/passsync-sim-decisions.json
+
+swift run passsync simulate \
+  --input Examples/simulation-state.json \
+  --direction bidirectional \
+  --vault PassSync-Test \
+  --decision-file /tmp/passsync-sim-decisions.json
+```
+
+Decision files are redacted. They are intended to capture review choices, not credential values.
+
 ## Level 2: Local Readiness Checks
 
 Run preflight for basic tool availability:
@@ -162,6 +180,8 @@ BIN_DIR="$(swift build --show-bin-path)"
 "$BIN_DIR/passsync" examples list
 "$BIN_DIR/passsync" examples show minimal > /tmp/passsync-minimal.json
 jq empty /tmp/passsync-minimal.json
+"$BIN_DIR/passsync" simulate --input Examples/simulation-state.json --direction bidirectional --output /tmp/passsync-sim-decisions.json
+jq empty /tmp/passsync-sim-decisions.json
 ```
 
 Do not include real credentials, real TOTP seeds, backup passphrases, or backup files in issues, screenshots, examples, or CI artifacts.

@@ -42,7 +42,7 @@ PassSync is not a complete password-manager migration tool. These are the curren
 ### Not Built Yet
 
 - **Continuous sync is not implemented.** v1 is one-time plan/apply only. It does not watch for changes or run in the background.
-- **Field-level conflict merge is not implemented.** The CLI and macOS app can display field-level differences, and the CLI can choose a winning provider per conflict, but there is no per-field merge/apply model yet.
+- **Field-level conflict merge is decision-file based.** The CLI can apply reviewed per-field merge decisions from JSON decision files, but the interactive CLI prompt is still per-record and the SwiftUI app can export but not yet edit/import/apply decision files.
 - **Only website/app login records are in scope.** Secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, custom item types, and arbitrary custom fields are not synced.
 - **The native macOS app is local-build only.** A SwiftUI app target exists, but signing, notarization, releases, auto-update, and installer packaging are not implemented.
 - **Restore is provider-visible login recovery only.** Restore can plan/apply backed-up website/app login records for one provider at a time. It still blocks passkey evidence and Apple-destination TOTP unless explicitly allowed as password-only.
@@ -201,6 +201,39 @@ swift run passsync sync --direction bidirectional --truth-source 1password --app
 
 `--apply` prompts for a backup passphrase and writes an encrypted backup before mutating anything.
 
+## Decision Files
+
+Decision files let you export a redacted plan, edit conflict decisions, and apply those decisions to a freshly rebuilt plan. Decision files do not contain passwords or TOTP seeds.
+
+Export a live decision file without applying:
+
+```sh
+swift run passsync plan \
+  --direction bidirectional \
+  --truth-source 1password \
+  --output /tmp/passsync-decisions.json
+```
+
+Use an edited decision file during a dry run:
+
+```sh
+swift run passsync plan \
+  --direction bidirectional \
+  --decision-file /tmp/passsync-decisions.json
+```
+
+Apply only after reviewing the decision-adjusted plan:
+
+```sh
+swift run passsync sync \
+  --direction bidirectional \
+  --decision-file /tmp/passsync-decisions.json \
+  --backup-path "$HOME/.passsync/backups/reviewed-sync.psbackup" \
+  --apply
+```
+
+Valid decision values are `applyOriginal`, `skip`, `useOnePassword`, `useApplePasswords`, and `mergeFields`. For `mergeFields`, each changed field except `modifiedAt` must have a provider choice in `fieldDecisions`.
+
 ## Backup
 
 Create an encrypted backup without syncing:
@@ -289,6 +322,16 @@ swift run passsync simulate \
   --vault PassSync-Test
 ```
 
+Export a synthetic decision file from a simulation dry run:
+
+```sh
+swift run passsync simulate \
+  --input Examples/simulation-state.json \
+  --direction bidirectional \
+  --vault PassSync-Test \
+  --output /tmp/passsync-sim-decisions.json
+```
+
 Write a simulated output state while treating 1Password as the truth source:
 
 ```sh
@@ -299,6 +342,15 @@ swift run passsync simulate \
   --truth-source 1password \
   --vault PassSync-Test \
   --apply
+```
+
+Test an edited decision file in the simulator:
+
+```sh
+swift run passsync simulate \
+  --input Examples/simulation-state.json \
+  --direction bidirectional \
+  --decision-file /tmp/passsync-sim-decisions.json
 ```
 
 Simulation deliberately mimics v1 provider limitations:
@@ -370,10 +422,9 @@ Use that flag only after reviewing the plan.
 
 ### Near Term
 
-- **Per-field conflict decisions.** Turn field-level diff display into a real merge model with per-field choices, batch actions, and reusable decision files.
-- **Restore UI hardening.** Add richer SwiftUI restore review, restore history, and clearer pre-restore backup evidence.
+- **SwiftUI decision workflow.** Add native editing, import, validation, and apply for decision files instead of export-only review.
+- **Restore UI hardening.** Add richer SwiftUI restore review, restore verification, restore history, and clearer pre-restore backup evidence.
 - **Doctor expansion.** Add more checks for `op` authentication edge cases, Keychain read/write probes, app signing state, and risky iCloud Keychain conditions.
-- **Decision-file workflow.** Export reviewed sync or restore decisions, re-open them for review, and apply exactly the reviewed plan.
 - **Restore audit trail.** Record restore verification results, pre-restore backup paths, and apply receipts.
 - **Malformed-input fixtures.** Add explicit invalid fixture cases for CLI parser and error-message regression tests.
 

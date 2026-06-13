@@ -13,6 +13,8 @@ final class AppModel: ObservableObject {
     @Published var liveError: String?
     @Published var restoreMessage: String?
     @Published var restoreError: String?
+    @Published var conflictReviewMessage: String?
+    @Published var conflictReviewError: String?
     @Published var isRunningSimulation = false
     @Published var isRunningLivePlan = false
     @Published var isApplyingLivePlan = false
@@ -40,6 +42,7 @@ final class AppModel: ObservableObject {
     @Published var restoreVault = ""
     @Published var restorePassphrase = ""
     @Published var restoreAllowPasswordOnly = false
+    @Published var decisionOutputPath = "/tmp/passsync-decisions.json"
 
     private var liveSnapshot: (onePassword: [CredentialRecord], apple: [CredentialRecord])?
     private var restoreSnapshot: [CredentialRecord]?
@@ -306,6 +309,28 @@ final class AppModel: ObservableObject {
             restoreError = String(describing: error)
         }
         isApplyingRestorePlan = false
+    }
+
+    func exportLatestDecisionFile() {
+        guard let plan = livePlan ?? simulationPlan ?? restorePlan else {
+            conflictReviewError = "Run a simulation, live plan, or restore plan first."
+            return
+        }
+
+        do {
+            let decisions = PlanDecisionFiles.export(from: plan)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let outputURL = URL(fileURLWithPath: decisionOutputPath)
+            try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try encoder.encode(decisions).write(to: outputURL, options: [.atomic])
+            conflictReviewError = nil
+            conflictReviewMessage = "Decision file written to \(decisionOutputPath)."
+        } catch {
+            conflictReviewMessage = nil
+            conflictReviewError = String(describing: error)
+        }
     }
 
     private func writeSimulationState(_ state: SimulationState, path: String) throws {

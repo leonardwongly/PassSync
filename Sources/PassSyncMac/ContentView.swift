@@ -290,6 +290,26 @@ private struct ConflictReviewView: View {
                     subtitle: "Field-level differences from the latest simulation, live, and restore plans."
                 )
 
+                GroupBox("Decision File") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("Decision output path", text: $model.decisionOutputPath)
+                        Button {
+                            model.exportLatestDecisionFile()
+                        } label: {
+                            Label("Export Decisions", systemImage: "square.and.arrow.down")
+                        }
+                        .disabled(model.livePlan == nil && model.simulationPlan == nil && model.restorePlan == nil)
+                    }
+                }
+
+                if let message = model.conflictReviewMessage {
+                    MessageBanner(message: message, style: .info)
+                }
+
+                if let error = model.conflictReviewError {
+                    MessageBanner(message: error, style: .error)
+                }
+
                 if reviewActions.isEmpty {
                     ContentUnavailableView(
                         "No Field Differences",
