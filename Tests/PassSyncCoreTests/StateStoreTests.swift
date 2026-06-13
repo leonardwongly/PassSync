@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import Testing
 @testable import PassSyncCore
 
@@ -8,10 +9,35 @@ import Testing
     let summary = try store.summary()
 
     #expect(summary.path == store.path)
+    #expect(summary.schemaVersion == StateStore.currentSchemaVersion)
     #expect(summary.credentialCount == 0)
     #expect(summary.decisionFileCount == 0)
     #expect(summary.receiptCount == 0)
     #expect(summary.latestObservationAt == nil)
+    #expect(try store.schemaVersion() == StateStore.currentSchemaVersion)
+}
+
+@Test func stateStoreMigratesUnversionedDatabaseToCurrentSchema() throws {
+    let path = temporaryStatePath()
+    try setSQLiteUserVersion(path: path, version: 0)
+    let store = StateStore(path: path)
+
+    try store.initialize()
+
+    #expect(try store.schemaVersion() == StateStore.currentSchemaVersion)
+}
+
+@Test func stateStoreRefusesNewerSchemaVersion() throws {
+    let path = temporaryStatePath()
+    try setSQLiteUserVersion(path: path, version: StateStore.currentSchemaVersion + 1)
+    let store = StateStore(path: path)
+
+    do {
+        try store.initialize()
+        Issue.record("Expected newer schema version to fail closed.")
+    } catch let error as PassSyncError {
+        #expect(error.description.contains("newer than this PassSync build supports"))
+    }
 }
 
 @Test func stateStoreRecordsNonSecretCredentialSnapshots() throws {
@@ -146,4 +172,17 @@ private func writeJSON<T: Encodable>(_ value: T, path: String) throws {
     let url = URL(fileURLWithPath: path)
     try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     try encoder.encode(value).write(to: url, options: [.atomic])
+}
+
+private func setSQLiteUserVersion(path: String, version: Int) throws {
+    let url = URL(fileURLWithPath: path)
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    var db: OpaquePointer?
+    guard sqlite3_open(path, &db) == SQLITE_OK, let db else {
+        throw PassSyncError.decodingFailed("Could not open test SQLite database.")
+    }
+    defer { sqlite3_close(db) }
+    guard sqlite3_exec(db, "PRAGMA user_version = \(version);", nil, nil, nil) == SQLITE_OK else {
+        throw PassSyncError.decodingFailed("Could not set test SQLite user_version.")
+    }
 }

@@ -373,6 +373,7 @@ struct PassSyncCLI {
 
         print("PassSync state store")
         print("- path: \(summary.path)")
+        print("- schema version: \(summary.schemaVersion)")
         print("- credentials: \(summary.credentialCount)")
         print("- decision files: \(summary.decisionFileCount)")
         print("- receipts: \(summary.receiptCount)")

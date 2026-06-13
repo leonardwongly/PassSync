@@ -336,7 +336,7 @@ PassSync can maintain a local SQLite metadata database at:
 $HOME/.passsync/state/passsync.sqlite
 ```
 
-The state store is intentionally non-secret. It stores provider, host/username key, source ID, vault ID, title, URL count, TOTP/passkey booleans, modification/observation timestamps, raw provider fingerprints, decision-file hashes, and receipt hashes. It does not store passwords, TOTP seeds, notes, or backup passphrases.
+The state store is intentionally non-secret. It stores provider, host/username key, source ID, vault ID, title, URL count, TOTP/passkey booleans, modification/observation timestamps, raw provider fingerprints, decision-file hashes, and receipt hashes. It does not store passwords, TOTP seeds, notes, or backup passphrases. The SQLite database uses `PRAGMA user_version`; PassSync initializes and migrates unversioned stores to the current schema and refuses newer unsupported schemas.
 
 Record metadata from an offline simulation fixture:
 
@@ -531,7 +531,7 @@ Use that flag only after reviewing the plan.
 - **SwiftUI decision workflow hardening.** Add richer validation, batch controls, and clearer warnings when a decision file does not match the current plan.
 - **Restore UI hardening.** Add richer SwiftUI restore verification, restore history, and clearer pre-restore backup evidence.
 - **Doctor expansion.** Add more checks for risky iCloud Keychain conditions and optional deeper provider probes.
-- **State-store hardening.** Add schema migration tests before using the non-secret SQLite metadata store for background sync.
+- **State-store hardening.** Add richer migration paths as the non-secret SQLite metadata store grows toward background sync.
 - **Audit hardening.** Sign receipts and make post-apply verification failures more visible.
 - **Signed macOS distribution.** Add Developer ID signing, hardened runtime, notarization, stapling, and release automation.
 - **Malformed-input hardening.** Continue expanding end-to-end CLI stderr/exit-code regression tests as new parser surfaces are added.

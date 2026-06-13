@@ -59,6 +59,7 @@ public struct StateCredentialSnapshot: Codable, Equatable, Sendable, Identifiabl
 
 public struct StateStoreSummary: Codable, Equatable, Sendable {
     public var path: String
+    public var schemaVersion: Int
     public var credentialCount: Int
     public var decisionFileCount: Int
     public var receiptCount: Int
@@ -66,6 +67,8 @@ public struct StateStoreSummary: Codable, Equatable, Sendable {
 }
 
 public struct StateStore: Sendable {
+    public static let currentSchemaVersion = 1
+
     public var path: String
 
     public init(path: String) {
@@ -74,46 +77,21 @@ public struct StateStore: Sendable {
 
     public func initialize() throws {
         try withDatabase { db in
-            try execute(db, """
-            CREATE TABLE IF NOT EXISTS credential_snapshots (
-              provider TEXT NOT NULL,
-              host TEXT NOT NULL,
-              username TEXT NOT NULL,
-              source_id TEXT,
-              vault_id TEXT,
-              title TEXT NOT NULL,
-              url_count INTEGER NOT NULL,
-              has_totp INTEGER NOT NULL,
-              has_passkey INTEGER NOT NULL,
-              modified_at TEXT,
-              raw_fingerprint TEXT,
-              observed_at TEXT NOT NULL,
-              PRIMARY KEY(provider, host, username)
-            );
-            """)
-            try execute(db, """
-            CREATE TABLE IF NOT EXISTS decision_files (
-              id TEXT PRIMARY KEY,
-              path TEXT NOT NULL,
-              sha256 TEXT NOT NULL,
-              generated_at TEXT NOT NULL,
-              plan_generated_at TEXT NOT NULL,
-              direction TEXT NOT NULL,
-              decision_count INTEGER NOT NULL
-            );
-            """)
-            try execute(db, """
-            CREATE TABLE IF NOT EXISTS apply_receipts (
-              id TEXT PRIMARY KEY,
-              path TEXT NOT NULL,
-              sha256 TEXT NOT NULL,
-              created_at TEXT NOT NULL,
-              operation TEXT NOT NULL,
-              backup_path TEXT NOT NULL,
-              action_count INTEGER NOT NULL,
-              mutating_action_count INTEGER NOT NULL
-            );
-            """)
+            let version = try schemaVersion(db)
+            guard version <= Self.currentSchemaVersion else {
+                throw PassSyncError.unsupported("State store schema version \(version) is newer than this PassSync build supports.")
+            }
+            try createV1Schema(db)
+            if version < Self.currentSchemaVersion {
+                try setSchemaVersion(Self.currentSchemaVersion, db: db)
+            }
+        }
+    }
+
+    public func schemaVersion() throws -> Int {
+        try initialize()
+        return try withDatabase { db in
+            try schemaVersion(db)
         }
     }
 
@@ -158,6 +136,7 @@ public struct StateStore: Sendable {
         return try withDatabase { db in
             StateStoreSummary(
                 path: path,
+                schemaVersion: try schemaVersion(db),
                 credentialCount: try scalarInt(db, "SELECT COUNT(*) FROM credential_snapshots;"),
                 decisionFileCount: try scalarInt(db, "SELECT COUNT(*) FROM decision_files;"),
                 receiptCount: try scalarInt(db, "SELECT COUNT(*) FROM apply_receipts;"),
@@ -286,6 +265,57 @@ public struct StateStore: Sendable {
                 throw sqliteError(db, context: "upsert receipt")
             }
         }
+    }
+
+    private func createV1Schema(_ db: OpaquePointer) throws {
+        try execute(db, """
+        CREATE TABLE IF NOT EXISTS credential_snapshots (
+          provider TEXT NOT NULL,
+          host TEXT NOT NULL,
+          username TEXT NOT NULL,
+          source_id TEXT,
+          vault_id TEXT,
+          title TEXT NOT NULL,
+          url_count INTEGER NOT NULL,
+          has_totp INTEGER NOT NULL,
+          has_passkey INTEGER NOT NULL,
+          modified_at TEXT,
+          raw_fingerprint TEXT,
+          observed_at TEXT NOT NULL,
+          PRIMARY KEY(provider, host, username)
+        );
+        """)
+        try execute(db, """
+        CREATE TABLE IF NOT EXISTS decision_files (
+          id TEXT PRIMARY KEY,
+          path TEXT NOT NULL,
+          sha256 TEXT NOT NULL,
+          generated_at TEXT NOT NULL,
+          plan_generated_at TEXT NOT NULL,
+          direction TEXT NOT NULL,
+          decision_count INTEGER NOT NULL
+        );
+        """)
+        try execute(db, """
+        CREATE TABLE IF NOT EXISTS apply_receipts (
+          id TEXT PRIMARY KEY,
+          path TEXT NOT NULL,
+          sha256 TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          operation TEXT NOT NULL,
+          backup_path TEXT NOT NULL,
+          action_count INTEGER NOT NULL,
+          mutating_action_count INTEGER NOT NULL
+        );
+        """)
+    }
+
+    private func schemaVersion(_ db: OpaquePointer) throws -> Int {
+        try scalarInt(db, "PRAGMA user_version;")
+    }
+
+    private func setSchemaVersion(_ version: Int, db: OpaquePointer) throws {
+        try execute(db, "PRAGMA user_version = \(version);")
     }
 
     private func execute(_ db: OpaquePointer, _ sql: String) throws {
