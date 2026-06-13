@@ -194,10 +194,12 @@ struct PassSyncCLI {
 
         if let outputPath = options.outputPath {
             try writeDecisionFile(PlanDecisionFiles.export(from: syncPlan), path: outputPath)
+            try recordDecisionFileIfRequested(outputPath, options: options)
             if !options.json {
                 print("\nDecision file written: \(outputPath)")
             }
         }
+        try recordCredentialsIfRequested(onePasswordRecords + appleRecords, options: options, label: "provider snapshot")
 
         guard apply else {
             if !options.json {
@@ -252,6 +254,7 @@ struct PassSyncCLI {
             postApplyVerification: verification
         )
         let receiptPath = try AuditLog().writeReceipt(receipt, directoryPath: defaultAuditPath())
+        try recordReceiptIfRequested(receiptPath, options: options)
         print("Sync applied.")
         print("Apply receipt written: \(receiptPath)")
     }
@@ -538,10 +541,12 @@ struct PassSyncCLI {
 
         if let outputPath = options.outputPath {
             try writeDecisionFile(PlanDecisionFiles.export(from: restorePlan), path: outputPath)
+            try recordDecisionFileIfRequested(outputPath, options: options)
             if !options.json {
                 print("\nDecision file written: \(outputPath)")
             }
         }
+        try recordCredentialsIfRequested(current, options: options, label: "restore target snapshot")
 
         guard apply else {
             if !options.json {
@@ -602,6 +607,7 @@ struct PassSyncCLI {
             postApplyVerification: verification
         )
         let receiptPath = try AuditLog().writeReceipt(receipt, directoryPath: defaultAuditPath())
+        try recordReceiptIfRequested(receiptPath, options: options)
         print("Restore applied.")
         print("Apply receipt written: \(receiptPath)")
     }
@@ -650,10 +656,12 @@ struct PassSyncCLI {
         guard apply else {
             if let outputPath = options.outputPath {
                 try writeDecisionFile(PlanDecisionFiles.export(from: syncPlan), path: outputPath)
+                try recordDecisionFileIfRequested(outputPath, options: options)
                 if !options.json {
                     print("\nDecision file written: \(outputPath)")
                 }
             }
+            try recordCredentialsIfRequested(state.onePasswordRecords + state.appleRecords, options: options, label: "simulation input snapshot")
             if !options.json {
                 print("\nSimulation dry run only. Re-run with `--apply --output <path>` to write a simulated result state.")
             }
@@ -671,6 +679,7 @@ struct PassSyncCLI {
         let executor = SyncExecutor(onePassword: store, applePasswords: store)
         try executor.apply(plan: syncPlan, onePasswordVault: options.vault)
         try writeSimulationState(store.state, path: outputPath)
+        try recordCredentialsIfRequested(store.state.onePasswordRecords + store.state.appleRecords, options: options, label: "simulation output snapshot")
         print("Simulation output written: \(outputPath)")
     }
 
@@ -880,6 +889,33 @@ struct PassSyncCLI {
         StateStore(path: options.statePath ?? defaultStatePath())
     }
 
+    private static func recordCredentialsIfRequested(_ records: [CredentialRecord], options: CLIOptions, label: String) throws {
+        guard options.recordState else { return }
+        let store = stateStore(options)
+        let count = try store.recordCredentials(records)
+        if !options.json {
+            print("State store recorded \(count) \(label) credential(s): \(store.path)")
+        }
+    }
+
+    private static func recordDecisionFileIfRequested(_ path: String, options: CLIOptions) throws {
+        guard options.recordState else { return }
+        let store = stateStore(options)
+        try store.recordDecisionFile(path: path)
+        if !options.json {
+            print("State store recorded decision file metadata: \(store.path)")
+        }
+    }
+
+    private static func recordReceiptIfRequested(_ path: String, options: CLIOptions) throws {
+        guard options.recordState else { return }
+        let store = stateStore(options)
+        try store.recordReceipt(path: path)
+        if !options.json {
+            print("State store recorded receipt metadata: \(store.path)")
+        }
+    }
+
     private static func postApplySyncVerification(
         options: CLIOptions,
         syncOptions: SyncOptions,
@@ -1029,6 +1065,7 @@ struct PassSyncCLI {
       --limit N                  Maximum credential snapshots for state-list-credentials. Default: 100.
       --op-path PATH             Path to op. Default: /opt/homebrew/bin/op.
       --json                     Print redacted JSON plan.
+      --record-state             Record non-secret snapshots/decisions/receipts into the SQLite state store.
       --allow-password-only-for-unsupported-security-material
                                  Allow password-only writes when Apple cannot accept TOTP/passkey material.
       --apply                    Mutate. Without --apply, sync is a dry run.
@@ -1059,6 +1096,7 @@ private struct CLIOptions {
     var json = false
     var allowPasswordOnly = false
     var didSetDirection = false
+    var recordState = false
     var limit = 100
 
     init(args: [String]) throws {
@@ -1103,6 +1141,8 @@ private struct CLIOptions {
                 opPath = try Self.value(after: arg, in: args, index: &index)
             case "--json":
                 json = true
+            case "--record-state":
+                recordState = true
             case "--allow-password-only-for-unsupported-security-material":
                 allowPasswordOnly = true
             case "--apply":

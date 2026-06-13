@@ -45,7 +45,7 @@ PassSync is not a complete password-manager migration tool. These are the curren
 ### Not Built Yet
 
 - **Continuous sync is not implemented.** v1 is one-time plan/apply only. It does not watch for changes or run in the background.
-- **The SQLite state store is metadata only.** `state-*` commands can record provider-visible credential fingerprints, reviewed decision files, and apply receipts, but the sync engine does not yet use this database as a continuous-change tracker or automatic conflict resolver.
+- **The SQLite state store is metadata only.** `--record-state` and `state-*` commands can record provider-visible credential fingerprints, reviewed decision files, and apply receipts, but the sync engine does not yet use this database as a continuous-change tracker or automatic conflict resolver.
 - **Field-level conflict merge is decision-file based.** The CLI and SwiftUI app can apply reviewed per-field merge decisions from JSON decision files, but the interactive CLI prompt is still per-record.
 - **Only website/app login records are in scope.** Secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, custom item types, and arbitrary custom fields are not synced.
 - **The native macOS app is local-build only.** A SwiftUI app target exists and unsigned release archives can be created locally, but Developer ID signing, notarization, auto-update, and installer packaging are not implemented.
@@ -345,6 +345,20 @@ swift run passsync state-record-simulation \
   --input Examples/simulation-state.json
 ```
 
+Record metadata while reviewing a simulation, live plan, or restore plan:
+
+```sh
+swift run passsync simulate \
+  --input Examples/simulation-state.json \
+  --direction bidirectional \
+  --record-state
+
+swift run passsync plan \
+  --direction bidirectional \
+  --truth-source 1password \
+  --record-state
+```
+
 Record metadata from a reviewed decision file or apply receipt:
 
 ```sh
@@ -359,7 +373,7 @@ swift run passsync state-summary
 swift run passsync state-list-credentials --limit 25
 ```
 
-Use `--state-path /tmp/passsync-state.sqlite` for isolated tests. The state store is groundwork for safer future sync workflows; it does not enable continuous sync in v1.
+Use `--state-path /tmp/passsync-state.sqlite` for isolated tests. `--record-state` records non-secret snapshots during `plan`, `sync`, `simulate`, and `restore` workflows, plus decision-file and receipt metadata when those files are written. The state store is groundwork for safer future sync workflows; it does not enable continuous sync in v1.
 
 ## Simulation
 
@@ -517,7 +531,7 @@ Use that flag only after reviewing the plan.
 - **SwiftUI decision workflow hardening.** Add richer validation, batch controls, and clearer warnings when a decision file does not match the current plan.
 - **Restore UI hardening.** Add richer SwiftUI restore verification, restore history, and clearer pre-restore backup evidence.
 - **Doctor expansion.** Add more checks for risky iCloud Keychain conditions and optional deeper provider probes.
-- **State-store hardening.** Connect more live apply and review workflows to the non-secret SQLite metadata store and add schema migration tests before using it for background sync.
+- **State-store hardening.** Add schema migration tests before using the non-secret SQLite metadata store for background sync.
 - **Audit hardening.** Sign receipts and make post-apply verification failures more visible.
 - **Signed macOS distribution.** Add Developer ID signing, hardened runtime, notarization, stapling, and release automation.
 - **Malformed-input hardening.** Continue expanding end-to-end CLI stderr/exit-code regression tests as new parser surfaces are added.
@@ -526,7 +540,7 @@ Use that flag only after reviewing the plan.
 
 - **Signed macOS app distribution.** Add notarized releases, a documented install path, and update distribution for the SwiftUI app.
 - **Richer SwiftUI workflows.** Add guided backup creation, per-field conflict resolution, restore history, and safer apply confirmations.
-- **Durable sync state integration.** Use the local SQLite metadata store for last-seen provider fingerprints, decision history, and audit history during review workflows.
+- **Durable sync state integration.** Use the local SQLite metadata store for richer last-seen comparisons and decision history during review workflows.
 - **Expanded item audits.** Detect secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, and custom fields, then report exactly what can and cannot be migrated.
 - **Manual passkey/TOTP migration guides.** Add account-level checklists for records that require provider-supported Credential Exchange or manual reenrollment.
 

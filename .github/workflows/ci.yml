@@ -49,6 +49,7 @@ jobs:
           "$BIN_DIR/passsync" audit-verify --input /tmp/passsync-empty-audit
           "$BIN_DIR/passsync" doctor --op-path /bin/echo --audit-path /tmp/passsync-empty-audit --release-script Scripts/package_release.sh
           rm -f /tmp/passsync-ci-state.sqlite
+          "$BIN_DIR/passsync" simulate --input Examples/simulation-state.json --direction bidirectional --output /tmp/passsync-state-decisions.json --record-state --state-path /tmp/passsync-ci-state.sqlite
           "$BIN_DIR/passsync" state-record-simulation --input Examples/simulation-state.json --state-path /tmp/passsync-ci-state.sqlite
           "$BIN_DIR/passsync" state-summary --state-path /tmp/passsync-ci-state.sqlite
           "$BIN_DIR/passsync" state-list-credentials --state-path /tmp/passsync-ci-state.sqlite --limit 5
