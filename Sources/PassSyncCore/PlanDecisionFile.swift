@@ -23,6 +23,7 @@ public struct PlanFieldDecision: Codable, Equatable, Sendable, Identifiable {
 public struct PlanActionDecision: Codable, Equatable, Sendable, Identifiable {
     public var key: CredentialKey
     public var originalKind: SyncActionKind
+    public var evidenceFingerprint: String?
     public var decision: PlanDecisionKind
     public var reason: String
     public var fieldDiffs: [CredentialFieldDiff]
@@ -31,6 +32,7 @@ public struct PlanActionDecision: Codable, Equatable, Sendable, Identifiable {
     public init(
         key: CredentialKey,
         originalKind: SyncActionKind,
+        evidenceFingerprint: String? = nil,
         decision: PlanDecisionKind,
         reason: String,
         fieldDiffs: [CredentialFieldDiff] = [],
@@ -38,6 +40,7 @@ public struct PlanActionDecision: Codable, Equatable, Sendable, Identifiable {
     ) {
         self.key = key
         self.originalKind = originalKind
+        self.evidenceFingerprint = evidenceFingerprint
         self.decision = decision
         self.reason = reason
         self.fieldDiffs = fieldDiffs
@@ -57,7 +60,7 @@ public struct PlanDecisionFile: Codable, Equatable, Sendable {
     public var decisions: [PlanActionDecision]
 
     public init(
-        format: String = "passsync.plan-decisions.v1",
+        format: String = "passsync.plan-decisions.v2",
         generatedAt: Date = Date(),
         planGeneratedAt: Date,
         direction: SyncDirection,
@@ -122,6 +125,7 @@ public enum PlanDecisionFiles {
         return PlanActionDecision(
             key: action.key,
             originalKind: action.kind,
+            evidenceFingerprint: evidenceFingerprint(for: action),
             decision: kind,
             reason: action.reason,
             fieldDiffs: diffs,
@@ -134,6 +138,15 @@ public enum PlanDecisionFiles {
         to action: SyncAction,
         allowPasswordOnlyForUnsupportedSecurityMaterial: Bool
     ) -> [SyncAction] {
+        guard decision.evidenceFingerprint == evidenceFingerprint(for: action) else {
+            return [
+                blocking(
+                    action,
+                    reason: "Decision evidence no longer matches the current plan. Re-export and review a fresh decision file."
+                )
+            ]
+        }
+
         switch decision.decision {
         case .applyOriginal:
             return [action]
@@ -298,6 +311,36 @@ public enum PlanDecisionFiles {
         return CredentialDiff.fieldDiffs(source: source, destination: destination)
     }
 
+    private static func evidenceFingerprint(for action: SyncAction) -> String {
+        let evidence = ActionEvidence(
+            key: action.key.description,
+            kind: action.kind.rawValue,
+            source: action.source?.rawValue,
+            destination: action.destination?.rawValue,
+            reason: action.reason,
+            fields: rawDiffs(for: action).map {
+                FieldEvidence(
+                    field: $0.field.rawValue,
+                    sourceValueSHA256: SHA256Fingerprint.hex(Data($0.sourceValue.utf8)),
+                    destinationValueSHA256: SHA256Fingerprint.hex(Data($0.destinationValue.utf8)),
+                    isSecret: $0.isSecret
+                )
+            }
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = (try? encoder.encode(evidence)) ?? Data()
+        return SHA256Fingerprint.hex(data)
+    }
+
+    private static func rawDiffs(for action: SyncAction) -> [CredentialFieldDiff] {
+        guard let source = action.sourceRecord,
+              let destination = action.destinationRecord else {
+            return []
+        }
+        return CredentialDiff.fieldDiffs(source: source, destination: destination, redacted: false)
+    }
+
     private static func record(provider: Provider, action: SyncAction) -> CredentialRecord? {
         if action.sourceRecord?.provider == provider {
             return action.sourceRecord
@@ -346,4 +389,20 @@ public enum PlanDecisionFiles {
             lhs.totpURI == rhs.totpURI &&
             lhs.hasPasskey == rhs.hasPasskey
     }
+}
+
+private struct ActionEvidence: Codable {
+    var key: String
+    var kind: String
+    var source: String?
+    var destination: String?
+    var reason: String
+    var fields: [FieldEvidence]
+}
+
+private struct FieldEvidence: Codable {
+    var field: String
+    var sourceValueSHA256: String
+    var destinationValueSHA256: String
+    var isSecret: Bool
 }
