@@ -357,28 +357,34 @@ private struct ConflictReviewView: View {
                         TextField("Decision output path", text: $model.decisionOutputPath)
                         HStack {
                             Button {
-                                model.loadDecisionFile()
+                                Task { await model.loadDecisionFile() }
                             } label: {
-                                Label("Load", systemImage: "folder")
+                                Label(model.isLoadingDecisionFile ? "Loading..." : "Load", systemImage: "folder")
                             }
+                            .disabled(model.isLoadingDecisionFile || model.isSavingDecisionFile)
                             Button {
-                                model.exportLatestDecisionFile()
+                                Task { await model.exportLatestDecisionFile() }
                             } label: {
-                                Label("Export", systemImage: "square.and.arrow.down")
+                                Label(model.isSavingDecisionFile ? "Writing..." : "Export", systemImage: "square.and.arrow.down")
                             }
-                            .disabled(model.livePlan == nil && model.simulationPlan == nil && model.restorePlan == nil)
+                            .disabled(model.isLoadingDecisionFile || model.isSavingDecisionFile || (model.livePlan == nil && model.simulationPlan == nil && model.restorePlan == nil))
                             Button {
-                                model.saveLoadedDecisionFile()
+                                Task { await model.saveLoadedDecisionFile() }
                             } label: {
-                                Label("Save", systemImage: "square.and.arrow.down.on.square")
+                                Label(model.isSavingDecisionFile ? "Writing..." : "Save", systemImage: "square.and.arrow.down.on.square")
                             }
-                            .disabled(model.loadedDecisionFile == nil)
+                            .disabled(model.isLoadingDecisionFile || model.isSavingDecisionFile || model.loadedDecisionFile == nil)
                             Button {
                                 model.applyLoadedDecisionFileToSelectedPlan()
                             } label: {
                                 Label("Apply to Plan", systemImage: "checkmark.rectangle.stack")
                             }
-                            .disabled(model.loadedDecisionFile == nil)
+                            .disabled(model.isLoadingDecisionFile || model.isSavingDecisionFile || model.loadedDecisionFile == nil)
+                            if model.isLoadingDecisionFile || model.isSavingDecisionFile {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .accessibilityLabel("Decision file operation in progress")
+                            }
                         }
                     }
                 }
@@ -512,10 +518,11 @@ private struct RecoveryView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         TextField("Backup path", text: $model.backupInventoryPath)
                         Button {
-                            model.loadBackupInventory()
+                            Task { await model.loadBackupInventory() }
                         } label: {
-                            Label("Scan Backups", systemImage: "externaldrive.badge.magnifyingglass")
+                            Label(model.isScanningBackups ? "Scanning..." : "Scan Backups", systemImage: "externaldrive.badge.magnifyingglass")
                         }
+                        .disabled(model.isScanningBackups)
                     }
                 }
 
@@ -523,10 +530,19 @@ private struct RecoveryView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         TextField("Audit path", text: $model.auditInventoryPath)
                         Button {
-                            model.loadAuditInventory()
+                            Task { await model.loadAuditInventory() }
                         } label: {
-                            Label("Scan Receipts", systemImage: "list.bullet.rectangle")
+                            Label(model.isScanningAudits ? "Scanning..." : "Scan Receipts", systemImage: "list.bullet.rectangle")
                         }
+                        .disabled(model.isScanningAudits)
+                    }
+                }
+
+                if model.isScanningBackups || model.isScanningAudits {
+                    HStack {
+                        ProgressView()
+                        Text(model.isScanningBackups ? "Scanning backup inventory..." : "Scanning audit receipts...")
+                            .foregroundStyle(.secondary)
                     }
                 }
 

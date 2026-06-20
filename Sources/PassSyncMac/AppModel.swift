@@ -24,6 +24,10 @@ final class AppModel: ObservableObject {
     @Published var isApplyingLivePlan = false
     @Published var isRunningRestorePlan = false
     @Published var isApplyingRestorePlan = false
+    @Published var isLoadingDecisionFile = false
+    @Published var isSavingDecisionFile = false
+    @Published var isScanningBackups = false
+    @Published var isScanningAudits = false
 
     @Published var simulationDirection: SyncDirection = .bidirectional
     @Published var simulationTruthSource: TruthSource = .none
@@ -372,56 +376,73 @@ final class AppModel: ObservableObject {
         isApplyingRestorePlan = false
     }
 
-    func exportLatestDecisionFile() {
+    func exportLatestDecisionFile() async {
         guard let plan = livePlan ?? simulationPlan ?? restorePlan else {
             conflictReviewError = "Run a simulation, live plan, or restore plan first."
             return
         }
 
+        let outputPath = decisionOutputPath
+        isSavingDecisionFile = true
+        defer { isSavingDecisionFile = false }
         do {
-            let decisions = PlanDecisionFiles.export(from: plan)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            let outputURL = URL(fileURLWithPath: decisionOutputPath)
-            try SecureFileIO.writePrivateData(try encoder.encode(decisions), to: outputURL)
+            let decisionCount = try await Task.detached(priority: .userInitiated) { () throws -> Int in
+                let decisions = PlanDecisionFiles.export(from: plan)
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                encoder.dateEncodingStrategy = .iso8601
+                let outputURL = URL(fileURLWithPath: outputPath)
+                try SecureFileIO.writePrivateData(try encoder.encode(decisions), to: outputURL)
+                return decisions.decisions.count
+            }.value
             conflictReviewError = nil
-            conflictReviewMessage = "Decision file written to \(decisionOutputPath)."
+            conflictReviewMessage = "Decision file with \(decisionCount) decision(s) written to \(outputPath)."
         } catch {
             conflictReviewMessage = nil
             conflictReviewError = String(describing: error)
         }
     }
 
-    func loadDecisionFile() {
+    func loadDecisionFile() async {
+        let inputPath = decisionInputPath
+        isLoadingDecisionFile = true
+        defer { isLoadingDecisionFile = false }
         do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            loadedDecisionFile = try decoder.decode(
-                PlanDecisionFile.self,
-                from: Data(contentsOf: URL(fileURLWithPath: decisionInputPath))
-            )
+            let file = try await Task.detached(priority: .userInitiated) { () throws -> PlanDecisionFile in
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                return try decoder.decode(
+                    PlanDecisionFile.self,
+                    from: Data(contentsOf: URL(fileURLWithPath: inputPath))
+                )
+            }.value
+            loadedDecisionFile = file
             conflictReviewError = nil
-            conflictReviewMessage = "Loaded \(loadedDecisionFile?.decisions.count ?? 0) decision(s) from \(decisionInputPath)."
+            conflictReviewMessage = "Loaded \(file.decisions.count) decision(s) from \(inputPath)."
         } catch {
             conflictReviewMessage = nil
             conflictReviewError = "Could not load decision file: \(error)"
         }
     }
 
-    func saveLoadedDecisionFile() {
+    func saveLoadedDecisionFile() async {
         guard let loadedDecisionFile else {
             conflictReviewError = "Load or export a decision file first."
             return
         }
+        let outputPath = decisionOutputPath
+        isSavingDecisionFile = true
+        defer { isSavingDecisionFile = false }
         do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            let outputURL = URL(fileURLWithPath: decisionOutputPath)
-            try SecureFileIO.writePrivateData(try encoder.encode(loadedDecisionFile), to: outputURL)
+            try await Task.detached(priority: .userInitiated) {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                encoder.dateEncodingStrategy = .iso8601
+                let outputURL = URL(fileURLWithPath: outputPath)
+                try SecureFileIO.writePrivateData(try encoder.encode(loadedDecisionFile), to: outputURL)
+            }.value
             conflictReviewError = nil
-            conflictReviewMessage = "Saved edited decision file to \(decisionOutputPath)."
+            conflictReviewMessage = "Saved edited decision file to \(outputPath)."
         } catch {
             conflictReviewMessage = nil
             conflictReviewError = "Could not save decision file: \(error)"
@@ -493,17 +514,25 @@ final class AppModel: ObservableObject {
         loadedDecisionFile = file
     }
 
-    func loadBackupInventory() {
+    func loadBackupInventory() async {
         let path = backupInventoryPath
-        let items = BackupInventory().scan(path: path)
+        isScanningBackups = true
+        defer { isScanningBackups = false }
+        let items = await Task.detached(priority: .userInitiated) {
+            BackupInventory().scan(path: path)
+        }.value
         backupInventory = items
         recoveryError = nil
         recoveryMessage = "Found \(items.count) backup item(s)."
     }
 
-    func loadAuditInventory() {
+    func loadAuditInventory() async {
         let path = auditInventoryPath
-        let items = AuditInventory().scan(path: path)
+        isScanningAudits = true
+        defer { isScanningAudits = false }
+        let items = await Task.detached(priority: .userInitiated) {
+            AuditInventory().scan(path: path)
+        }.value
         auditInventory = items
         recoveryError = nil
         recoveryMessage = "Found \(items.count) audit receipt item(s)."
