@@ -407,6 +407,8 @@ private struct DecisionEditorRow: View {
                     }
                 }
                 .labelsHidden()
+                .accessibilityLabel("Decision for \(decision.key.description)")
+                .accessibilityHint("Select how PassSync handles this reviewed action.")
                 .frame(maxWidth: 220)
             }
 
@@ -429,6 +431,8 @@ private struct DecisionEditorRow: View {
                                 }
                             }
                             .labelsHidden()
+                            .accessibilityLabel("Provider for \(fieldDecision.field.rawValue) on \(decision.key.description)")
+                            .accessibilityHint("Choose which provider supplies this field.")
                             .frame(maxWidth: 180)
                         }
                     }
