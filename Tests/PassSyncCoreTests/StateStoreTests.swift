@@ -65,7 +65,7 @@ import Testing
         totpURI: "otpauth://totp/example:user@example.test?secret=SECRET&issuer=Example",
         hasPasskey: true,
         modifiedAt: observedAt,
-        rawFingerprint: "fingerprint"
+        rawFingerprint: "raw-secret-token"
     )
 
     let count = try store.recordCredentials([record], observedAt: observedAt)
@@ -78,12 +78,21 @@ import Testing
     #expect(summary.latestObservationAt == observedAt)
     #expect(snapshots.count == 1)
     #expect(snapshots[0].provider == .onePassword)
-    #expect(snapshots[0].key == CredentialKey(host: "example.test", username: "user@example.test"))
+    #expect(!snapshots[0].keyFingerprint.isEmpty)
     #expect(snapshots[0].hasTOTP)
     #expect(snapshots[0].hasPasskey)
     #expect(!encodedSnapshots.contains("plain-secret"))
     #expect(!encodedSnapshots.contains("otpauth://"))
     #expect(!encodedSnapshots.contains("sensitive note"))
+    #expect(!encodedSnapshots.contains("item-1"))
+    #expect(!encodedSnapshots.contains("Private"))
+    #expect(!encodedSnapshots.contains("Example"))
+    #expect(!encodedSnapshots.contains("raw-secret-token"))
+    let rawDatabase = try String(decoding: Data(contentsOf: URL(fileURLWithPath: store.path)), as: UTF8.self)
+    #expect(!rawDatabase.contains("item-1"))
+    #expect(!rawDatabase.contains("Private"))
+    #expect(!rawDatabase.contains("Example"))
+    #expect(!rawDatabase.contains("raw-secret-token"))
 }
 
 @Test func stateStoreUpsertsCredentialSnapshotsByProviderHostAndUsername() throws {
@@ -110,8 +119,36 @@ import Testing
 
     #expect(summary.credentialCount == 1)
     #expect(snapshots.count == 1)
-    #expect(snapshots[0].title == "New Title")
     #expect(snapshots[0].urlCount == 2)
+}
+
+@Test func stateStoreMigratesV1SnapshotsWithoutIdentifierColumns() throws {
+    let path = temporaryStatePath()
+    try createV1StateStore(
+        path: path,
+        sourceID: "item-1",
+        vaultID: "Private",
+        title: "Example",
+        rawFingerprint: "raw-secret-token"
+    )
+    let store = StateStore(path: path)
+
+    try store.initialize()
+
+    let snapshots = try store.credentialSnapshots()
+    let encodedSnapshots = String(data: try JSONEncoder().encode(snapshots), encoding: .utf8) ?? ""
+    let rawDatabase = try String(decoding: Data(contentsOf: URL(fileURLWithPath: path)), as: UTF8.self)
+    #expect(try store.schemaVersion() == StateStore.currentSchemaVersion)
+    #expect(snapshots.count == 1)
+    #expect(!snapshots[0].keyFingerprint.isEmpty)
+    #expect(!encodedSnapshots.contains("item-1"))
+    #expect(!encodedSnapshots.contains("Private"))
+    #expect(!encodedSnapshots.contains("Example"))
+    #expect(!encodedSnapshots.contains("raw-secret-token"))
+    #expect(!rawDatabase.contains("item-1"))
+    #expect(!rawDatabase.contains("Private"))
+    #expect(!rawDatabase.contains("Example"))
+    #expect(!rawDatabase.contains("raw-secret-token"))
 }
 
 @Test func stateStoreRecordsDecisionFileMetadata() throws {
@@ -194,5 +231,47 @@ private func setSQLiteUserVersion(path: String, version: Int) throws {
     defer { sqlite3_close(db) }
     guard sqlite3_exec(db, "PRAGMA user_version = \(version);", nil, nil, nil) == SQLITE_OK else {
         throw PassSyncError.decodingFailed("Could not set test SQLite user_version.")
+    }
+}
+
+private func createV1StateStore(
+    path: String,
+    sourceID: String,
+    vaultID: String,
+    title: String,
+    rawFingerprint: String
+) throws {
+    let url = URL(fileURLWithPath: path)
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    var db: OpaquePointer?
+    guard sqlite3_open(path, &db) == SQLITE_OK, let db else {
+        throw PassSyncError.decodingFailed("Could not open test SQLite database.")
+    }
+    defer { sqlite3_close(db) }
+    let sql = """
+    CREATE TABLE credential_snapshots (
+      provider TEXT NOT NULL,
+      host TEXT NOT NULL,
+      username TEXT NOT NULL,
+      source_id TEXT,
+      vault_id TEXT,
+      title TEXT NOT NULL,
+      url_count INTEGER NOT NULL,
+      has_totp INTEGER NOT NULL,
+      has_passkey INTEGER NOT NULL,
+      modified_at TEXT,
+      raw_fingerprint TEXT,
+      observed_at TEXT NOT NULL,
+      PRIMARY KEY(provider, host, username)
+    );
+    INSERT INTO credential_snapshots (
+      provider, host, username, source_id, vault_id, title, url_count, has_totp, has_passkey, modified_at, raw_fingerprint, observed_at
+    ) VALUES (
+      '1password', 'example.test', 'user@example.test', '\(sourceID)', '\(vaultID)', '\(title)', 1, 1, 0, NULL, '\(rawFingerprint)', '2026-06-13T01:02:03Z'
+    );
+    PRAGMA user_version = 1;
+    """
+    guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
+        throw PassSyncError.decodingFailed("Could not create v1 test state store.")
     }
 }

@@ -419,8 +419,7 @@ struct PassSyncCLI {
         print("PassSync credential snapshots")
         print("- count: \(snapshots.count)")
         for snapshot in snapshots {
-            print("[\(snapshot.provider.rawValue)] \(snapshot.key)")
-            print("  - title: \(snapshot.title)")
+            print("[\(snapshot.provider.rawValue)] key fingerprint: \(snapshot.keyFingerprint)")
             print("  - urls: \(snapshot.urlCount)")
             print("  - totp: \(snapshot.hasTOTP)")
             print("  - passkey: \(snapshot.hasPasskey)")

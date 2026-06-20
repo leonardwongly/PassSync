@@ -45,7 +45,7 @@ PassSync is not a complete password-manager migration tool. These are the curren
 ### Not Built Yet
 
 - **Continuous sync is not implemented.** v1 is one-time plan/apply only. It does not watch for changes or run in the background.
-- **The SQLite state store is metadata only.** `--record-state` and `state-*` commands can record provider-visible credential fingerprints, reviewed decision files, and apply receipts, but the sync engine does not yet use this database as a continuous-change tracker or automatic conflict resolver.
+- **The SQLite state store is metadata only.** `--record-state` and `state-*` commands record hashed credential keys, counts, safety flags, reviewed decision-file metadata, and apply receipt metadata, but the sync engine does not yet use this database as a continuous-change tracker or automatic conflict resolver.
 - **Field-level conflict merge is decision-file based.** The CLI and SwiftUI app can apply reviewed per-field merge decisions from JSON decision files, but the interactive CLI prompt is still per-record.
 - **Only website/app login records are in sync scope.** `item-audit` can count unsupported 1Password item categories, but secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, custom item types, and arbitrary custom fields are not synced.
 - **The native macOS app is local-build only.** A SwiftUI app target exists and unsigned release archives can be created locally, but Developer ID signing, notarization, auto-update, and installer packaging are not implemented.
@@ -346,7 +346,7 @@ PassSync can maintain a local SQLite metadata database at:
 $HOME/.passsync/state/passsync.sqlite
 ```
 
-The state store is intentionally non-secret. It stores provider, host/username key, source ID, vault ID, title, URL count, TOTP/passkey booleans, modification/observation timestamps, raw provider fingerprints, decision-file hashes, and receipt hashes. It does not store passwords, TOTP seeds, notes, or backup passphrases. The SQLite database uses `PRAGMA user_version`; PassSync initializes and migrates unversioned stores to the current schema and refuses newer unsupported schemas.
+The state store is intentionally non-secret and avoids durable titles or provider item identifiers. Credential snapshots store provider, a SHA-256 fingerprint of the normalized host/username key, URL count, TOTP/passkey booleans, and modification/observation timestamps. Decision-file and receipt metadata store file hashes, counts, and local paths. The state store does not store passwords, TOTP seeds, notes, backup passphrases, source item IDs, vault IDs, titles, or raw provider fingerprints. The SQLite database uses `PRAGMA user_version`; PassSync initializes and migrates unversioned or v1 stores to the current schema and refuses newer unsupported schemas.
 
 Record metadata from an offline simulation fixture:
 
