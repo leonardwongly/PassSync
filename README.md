@@ -526,11 +526,15 @@ PassSync treats TOTP seeds as secrets:
 - Apple-to-1Password TOTP writes are supported when a source record includes an `otpauth://` URI.
 - 1Password-to-Apple TOTP writes are blocked because the Apple Keychain internet-password API does not safely create Passwords.app verification-code entries.
 
-To intentionally allow password-only writes when security material cannot be transferred:
+To intentionally allow password-only Apple writes for TOTP-bearing records when
+verification-code material cannot be transferred:
 
 ```sh
 --allow-password-only-for-unsupported-security-material
 ```
+
+This flag does not allow passkey-bearing records. Passkey records remain blocked
+unless a future provider-supported credential-exchange path exists.
 
 Use that flag only after reviewing the plan.
 

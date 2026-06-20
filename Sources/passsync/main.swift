@@ -1102,14 +1102,15 @@ struct PassSyncCLI {
       --json                     Print redacted JSON plan.
       --record-state             Record non-secret snapshots/decisions/receipts into the SQLite state store.
       --allow-password-only-for-unsupported-security-material
-                                 Allow password-only writes when Apple cannot accept TOTP/passkey material.
+                                 Allow explicit password-only Apple writes for TOTP-bearing records only.
       --apply                    Mutate. Without --apply, sync is a dry run.
 
     Security defaults:
       - Dry-run by default.
       - Encrypted backup is written before every apply.
       - Secrets are redacted from plans.
-      - Passkey-bearing records and Apple-destination TOTP records fail closed unless explicitly allowed.
+      - Passkey-bearing records always fail closed.
+      - Apple-destination TOTP records fail closed unless password-only writes are explicitly allowed.
     """
 }
 
