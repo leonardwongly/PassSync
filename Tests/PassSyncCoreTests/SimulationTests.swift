@@ -55,7 +55,11 @@ import Testing
         )
     )
 
-    try SyncExecutor(onePassword: store, applePasswords: store).apply(plan: allowedPlan, onePasswordVault: "Test")
+    try SyncExecutor(
+        onePassword: store,
+        applePasswords: store,
+        allowPasswordOnlyForUnsupportedSecurityMaterial: true
+    ).apply(plan: allowedPlan, onePasswordVault: "Test")
 
     #expect(store.state.appleRecords.count == 1)
     #expect(store.state.appleRecords[0].totpURI == nil)

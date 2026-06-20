@@ -260,7 +260,11 @@ struct PassSyncCLI {
         try BackupManager().writeEncryptedBackup(payload: backupPayload, passphrase: passphrase, outputPath: backupPath)
         print("Encrypted backup written: \(backupPath)")
 
-        let executor = SyncExecutor(onePassword: onePassword, applePasswords: apple)
+        let executor = SyncExecutor(
+            onePassword: onePassword,
+            applePasswords: apple,
+            allowPasswordOnlyForUnsupportedSecurityMaterial: options.allowPasswordOnly
+        )
         try executor.apply(plan: syncPlan, onePasswordVault: options.vault)
         let verification = postApplySyncVerification(
             options: options,
@@ -609,7 +613,11 @@ struct PassSyncCLI {
 
         let onePassword = OnePasswordClient(runner: ProcessRunner(), opPath: options.opPath)
         let apple = AppleKeychainClient()
-        try SyncExecutor(onePassword: onePassword, applePasswords: apple).apply(
+        try SyncExecutor(
+            onePassword: onePassword,
+            applePasswords: apple,
+            allowPasswordOnlyForUnsupportedSecurityMaterial: options.allowPasswordOnly
+        ).apply(
             plan: restorePlan,
             onePasswordVault: options.vault
         )
@@ -701,7 +709,11 @@ struct PassSyncCLI {
             syncPlan = try resolveInteractiveConflicts(syncPlan, allowPasswordOnly: options.allowPasswordOnly)
         }
 
-        let executor = SyncExecutor(onePassword: store, applePasswords: store)
+        let executor = SyncExecutor(
+            onePassword: store,
+            applePasswords: store,
+            allowPasswordOnlyForUnsupportedSecurityMaterial: options.allowPasswordOnly
+        )
         try executor.apply(plan: syncPlan, onePasswordVault: options.vault)
         try writeSimulationState(store.state, path: outputPath)
         try recordCredentialsIfRequested(store.state.onePasswordRecords + store.state.appleRecords, options: options, label: "simulation output snapshot")

@@ -3,10 +3,16 @@ import Foundation
 public struct SyncExecutor<OnePassword: OnePasswordManaging, ApplePasswords: ApplePasswordsManaging>: Sendable {
     private let onePassword: OnePassword
     private let applePasswords: ApplePasswords
+    private let allowPasswordOnlyForUnsupportedSecurityMaterial: Bool
 
-    public init(onePassword: OnePassword, applePasswords: ApplePasswords) {
+    public init(
+        onePassword: OnePassword,
+        applePasswords: ApplePasswords,
+        allowPasswordOnlyForUnsupportedSecurityMaterial: Bool = false
+    ) {
         self.onePassword = onePassword
         self.applePasswords = applePasswords
+        self.allowPasswordOnlyForUnsupportedSecurityMaterial = allowPasswordOnlyForUnsupportedSecurityMaterial
     }
 
     public func apply(plan: SyncPlan, onePasswordVault: String? = nil) throws {
@@ -19,6 +25,7 @@ public struct SyncExecutor<OnePassword: OnePasswordManaging, ApplePasswords: App
         }
 
         for action in plan.mutatingActions {
+            try validateMutation(action)
             switch action.kind {
             case .createInOnePassword:
                 guard let record = action.sourceRecord else { continue }
@@ -35,6 +42,17 @@ public struct SyncExecutor<OnePassword: OnePasswordManaging, ApplePasswords: App
             case .skipIdentical, .conflict, .unsupported:
                 continue
             }
+        }
+    }
+
+    private func validateMutation(_ action: SyncAction) throws {
+        guard let source = action.sourceRecord else { return }
+        if source.hasPasskey {
+            throw PassSyncError.unsafeApply("Refusing to apply \(action.kind.rawValue) for \(action.key) because the source contains passkey evidence.")
+        }
+        guard action.destination == .applePasswords else { return }
+        if source.totpURI != nil, !allowPasswordOnlyForUnsupportedSecurityMaterial {
+            throw PassSyncError.unsafeApply("Refusing to apply \(action.kind.rawValue) for \(action.key) because Apple Passwords cannot receive TOTP material through the Keychain internet-password API.")
         }
     }
 }

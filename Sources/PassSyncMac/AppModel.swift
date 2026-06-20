@@ -121,7 +121,11 @@ final class AppModel: ObservableObject {
 
         do {
             let store = SimulationStore(state: SampleSimulationData.state)
-            try SyncExecutor(onePassword: store, applePasswords: store).apply(
+            try SyncExecutor(
+                onePassword: store,
+                applePasswords: store,
+                allowPasswordOnlyForUnsupportedSecurityMaterial: simulationAllowPasswordOnly
+            ).apply(
                 plan: plan,
                 onePasswordVault: normalizedVault(simulationVault)
             )
@@ -197,6 +201,7 @@ final class AppModel: ObservableObject {
         let backupPassphrase = backupPassphrase
         let opPath = opPath
         let vault = normalizedVault(liveVault)
+        let allowPasswordOnly = liveAllowPasswordOnly
 
         do {
             try await Task.detached {
@@ -214,7 +219,11 @@ final class AppModel: ObservableObject {
                 )
                 let onePassword = OnePasswordClient(runner: ProcessRunner(), opPath: opPath)
                 let apple = AppleKeychainClient()
-                try SyncExecutor(onePassword: onePassword, applePasswords: apple).apply(
+                try SyncExecutor(
+                    onePassword: onePassword,
+                    applePasswords: apple,
+                    allowPasswordOnlyForUnsupportedSecurityMaterial: allowPasswordOnly
+                ).apply(
                     plan: livePlan,
                     onePasswordVault: vault
                 )
@@ -298,6 +307,7 @@ final class AppModel: ObservableObject {
         let passphrase = restorePassphrase
         let opPath = opPath
         let vault = normalizedVault(restoreVault)
+        let allowPasswordOnly = restoreAllowPasswordOnly
         let safetyBackupPath = Self.defaultBackupPath(prefix: "passsync-pre-restore")
 
         do {
@@ -310,7 +320,11 @@ final class AppModel: ObservableObject {
                 try BackupManager().writeEncryptedBackup(payload: safetyPayload, passphrase: passphrase, outputPath: safetyBackupPath)
                 let onePassword = OnePasswordClient(runner: ProcessRunner(), opPath: opPath)
                 let apple = AppleKeychainClient()
-                try SyncExecutor(onePassword: onePassword, applePasswords: apple).apply(
+                try SyncExecutor(
+                    onePassword: onePassword,
+                    applePasswords: apple,
+                    allowPasswordOnlyForUnsupportedSecurityMaterial: allowPasswordOnly
+                ).apply(
                     plan: restorePlan,
                     onePasswordVault: vault
                 )
