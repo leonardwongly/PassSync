@@ -100,7 +100,7 @@ public struct AuditLog: Sendable {
 
     public func writeReceipt(_ receipt: ApplyReceipt, directoryPath: String) throws -> String {
         let directoryURL = URL(fileURLWithPath: directoryPath)
-        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        try SecureFileIO.createPrivateDirectory(at: directoryURL)
         var receipt = receipt
         receipt.previousReceiptSHA256 = try latestReceiptSHA256(in: directoryURL)
 
@@ -112,7 +112,7 @@ public struct AuditLog: Sendable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        try encoder.encode(receipt).write(to: URL(fileURLWithPath: path), options: [.atomic])
+        try SecureFileIO.writePrivateData(try encoder.encode(receipt), to: URL(fileURLWithPath: path), overwrite: false)
         return path
     }
 

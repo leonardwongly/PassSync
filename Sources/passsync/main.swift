@@ -1024,8 +1024,7 @@ struct PassSyncCLI {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let outputURL = URL(fileURLWithPath: path)
-        try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try encoder.encode(state).write(to: outputURL, options: [.atomic])
+        try SecureFileIO.writePrivateData(try encoder.encode(state), to: outputURL)
     }
 
     private static func readDecisionFile(path: String) throws -> PlanDecisionFile {
@@ -1043,8 +1042,7 @@ struct PassSyncCLI {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let outputURL = URL(fileURLWithPath: path)
-        try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try encoder.encode(decisions).write(to: outputURL, options: [.atomic])
+        try SecureFileIO.writePrivateData(try encoder.encode(decisions), to: outputURL)
     }
 
     private static let usage = """

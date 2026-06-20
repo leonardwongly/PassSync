@@ -83,6 +83,30 @@ import Testing
     #expect(items[0].error == nil)
 }
 
+@Test func auditLogCreatesPrivateDirectoryAndReceipt() throws {
+    let plan = SyncPlan(
+        direction: .appleToOnePassword,
+        truthSource: .applePasswords,
+        conflictPolicy: .fail,
+        actions: [],
+        warnings: []
+    )
+    let receipt = ApplyReceipt(
+        operation: .sync,
+        backupPath: "/tmp/passsync-test.psbackup",
+        direction: plan.direction,
+        truthSource: plan.truthSource,
+        conflictPolicy: plan.conflictPolicy,
+        plan: plan
+    )
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+
+    let path = try AuditLog().writeReceipt(receipt, directoryPath: directory.path)
+
+    #expect(try SecureFileIO.permissions(at: directory.path) == 0o700)
+    #expect(try SecureFileIO.permissions(at: path) == 0o600)
+}
+
 @Test func auditLogChainsReceiptsWithPreviousReceiptHash() throws {
     let firstDate = try #require(ISO8601DateFormatter().date(from: "2026-06-13T01:00:00Z"))
     let secondDate = try #require(ISO8601DateFormatter().date(from: "2026-06-13T01:01:00Z"))

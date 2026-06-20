@@ -30,7 +30,7 @@ final class AppModel: ObservableObject {
     @Published var simulationConflictPolicy: ConflictPolicy = .interactive
     @Published var simulationVault = "PassSync-Test"
     @Published var simulationAllowPasswordOnly = false
-    @Published var simulationOutputPath = "/tmp/passsync-sim-output.json"
+    @Published var simulationOutputPath = AppModel.defaultPrivateOutputPath(directory: "simulations", prefix: "passsync-sim-output", extension: "json")
 
     @Published var liveDirection: SyncDirection = .bidirectional
     @Published var liveTruthSource: TruthSource = .none
@@ -38,16 +38,16 @@ final class AppModel: ObservableObject {
     @Published var liveVault = ""
     @Published var liveAllowPasswordOnly = false
     @Published var opPath = "/opt/homebrew/bin/op"
-    @Published var backupPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups/passsync-app.psbackup"
+    @Published var backupPath = AppModel.defaultBackupPath(prefix: "passsync-app")
     @Published var backupPassphrase = ""
 
-    @Published var restoreBackupPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups/passsync-app.psbackup"
+    @Published var restoreBackupPath = AppModel.defaultBackupPath(prefix: "passsync-app")
     @Published var restoreTarget: RestoreTarget = .onePassword
     @Published var restoreVault = ""
     @Published var restorePassphrase = ""
     @Published var restoreAllowPasswordOnly = false
-    @Published var decisionOutputPath = "/tmp/passsync-decisions.json"
-    @Published var decisionInputPath = "/tmp/passsync-decisions.json"
+    @Published var decisionOutputPath = AppModel.defaultPrivateOutputPath(directory: "decisions", prefix: "passsync-decisions", extension: "json")
+    @Published var decisionInputPath = AppModel.defaultPrivateOutputPath(directory: "decisions", prefix: "passsync-decisions", extension: "json")
     @Published var decisionPlanTarget: DecisionPlanTarget = .live
     @Published var loadedDecisionFile: PlanDecisionFile?
     @Published var backupInventoryPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups"
@@ -220,6 +220,8 @@ final class AppModel: ObservableObject {
                 )
             }.value
             liveMessage = "Sync applied. Encrypted backup written to \(backupPath)."
+            restoreBackupPath = backupPath
+            self.backupPath = Self.defaultBackupPath(prefix: "passsync-app")
         } catch {
             liveError = String(describing: error)
         }
@@ -296,7 +298,7 @@ final class AppModel: ObservableObject {
         let passphrase = restorePassphrase
         let opPath = opPath
         let vault = normalizedVault(restoreVault)
-        let safetyBackupPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups/passsync-pre-restore-\(Int(Date().timeIntervalSince1970)).psbackup"
+        let safetyBackupPath = Self.defaultBackupPath(prefix: "passsync-pre-restore")
 
         do {
             try await Task.detached {
@@ -332,8 +334,7 @@ final class AppModel: ObservableObject {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
             let outputURL = URL(fileURLWithPath: decisionOutputPath)
-            try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try encoder.encode(decisions).write(to: outputURL, options: [.atomic])
+            try SecureFileIO.writePrivateData(try encoder.encode(decisions), to: outputURL)
             conflictReviewError = nil
             conflictReviewMessage = "Decision file written to \(decisionOutputPath)."
         } catch {
@@ -368,8 +369,7 @@ final class AppModel: ObservableObject {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
             let outputURL = URL(fileURLWithPath: decisionOutputPath)
-            try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try encoder.encode(loadedDecisionFile).write(to: outputURL, options: [.atomic])
+            try SecureFileIO.writePrivateData(try encoder.encode(loadedDecisionFile), to: outputURL)
             conflictReviewError = nil
             conflictReviewMessage = "Saved edited decision file to \(decisionOutputPath)."
         } catch {
@@ -464,13 +464,28 @@ final class AppModel: ObservableObject {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let outputURL = URL(fileURLWithPath: path)
-        try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try encoder.encode(state).write(to: outputURL, options: [.atomic])
+        try SecureFileIO.writePrivateData(try encoder.encode(state), to: outputURL)
     }
 
     private func normalizedVault(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func defaultBackupPath(prefix: String) -> String {
+        defaultPrivateOutputPath(directory: "backups", prefix: prefix, extension: "psbackup")
+    }
+
+    private static func defaultPrivateOutputPath(directory: String, prefix: String, extension: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
+        let stamp = formatter.string(from: Date()).replacingOccurrences(of: ":", with: "")
+        let suffix = UUID().uuidString.prefix(8)
+        return "\(defaultPrivateDirectory())/\(directory)/\(prefix)-\(stamp)-\(suffix).\(`extension`)"
+    }
+
+    private static func defaultPrivateDirectory() -> String {
+        "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync"
     }
 }
 

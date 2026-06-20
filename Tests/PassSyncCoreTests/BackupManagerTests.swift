@@ -40,6 +40,17 @@ import Testing
     #expect(envelope.iterations >= 310_000)
 }
 
+@Test func encryptedBackupCreatesPrivateFileAndDirectory() throws {
+    let payload = BackupPayload(onePasswordRecords: [], appleRecords: [], warnings: [])
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let path = directory.appendingPathComponent("backup.psbackup").path
+
+    try BackupManager().writeEncryptedBackup(payload: payload, passphrase: "correct horse battery staple", outputPath: path)
+
+    #expect(try SecureFileIO.permissions(at: directory.path) == 0o700)
+    #expect(try SecureFileIO.permissions(at: path) == 0o600)
+}
+
 @Test func backupMigrationRewritesBackupWithCurrentEnvelope() throws {
     let payload = BackupPayload(
         onePasswordRecords: [

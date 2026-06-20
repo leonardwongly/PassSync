@@ -81,11 +81,8 @@ public struct BackupManager: Sendable {
         )
 
         let outputURL = URL(fileURLWithPath: outputPath)
-        try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let envelopeData = try encoder.encode(envelope)
-        guard FileManager.default.createFile(atPath: outputPath, contents: envelopeData, attributes: [.posixPermissions: 0o600]) else {
-            throw PassSyncError.backupRequired("Could not create backup file at \(outputPath).")
-        }
+        try SecureFileIO.writePrivateData(envelopeData, to: outputURL, overwrite: false)
     }
 
     public func readEncryptedBackup(inputPath: String, passphrase: String) throws -> BackupPayload {

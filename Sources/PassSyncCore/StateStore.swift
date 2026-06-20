@@ -184,11 +184,12 @@ public struct StateStore: Sendable {
 
     private func withDatabase<T>(_ body: (OpaquePointer) throws -> T) throws -> T {
         let url = URL(fileURLWithPath: path)
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try SecureFileIO.createPrivateParentDirectory(for: url)
         var db: OpaquePointer?
         guard sqlite3_open(url.path, &db) == SQLITE_OK, let db else {
             throw PassSyncError.decodingFailed("Could not open state store at \(path).")
         }
+        try SecureFileIO.secureExistingFile(at: url)
         defer { sqlite3_close(db) }
         return try body(db)
     }

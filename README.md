@@ -139,10 +139,12 @@ swift run passsync sync \
   --apply
 ```
 
-For non-interactive backup passphrase input:
+For non-interactive test or CI runs, PassSync can read `PASSSYNC_BACKUP_PASSPHRASE`
+from the environment. Do not put real backup passphrases inline in shell commands
+or committed scripts; prefer the interactive prompt for real backups.
 
 ```sh
-PASSSYNC_BACKUP_PASSPHRASE='use-a-real-secret' \
+PASSSYNC_BACKUP_PASSPHRASE='use-a-test-only-passphrase' \
 swift run passsync sync \
   --direction bidirectional \
   --truth-source 1password \
@@ -181,7 +183,7 @@ List and inspect offline examples:
 ```sh
 swift run passsync examples list
 swift run passsync examples show conflict
-swift run passsync examples write bidirectional --output /tmp/passsync-bidirectional.json
+swift run passsync examples write bidirectional --output "$HOME/.passsync/simulations/passsync-bidirectional.json"
 ```
 
 The `Examples/malformed-*.json` files are intentional negative fixtures used by tests for parser and fail-closed error handling. Do not use them as simulation inputs except when testing failures.
@@ -230,7 +232,7 @@ Export a live decision file without applying:
 swift run passsync plan \
   --direction bidirectional \
   --truth-source 1password \
-  --output /tmp/passsync-decisions.json
+  --output "$HOME/.passsync/decisions/passsync-decisions.json"
 ```
 
 Use an edited decision file during a dry run:
@@ -238,7 +240,7 @@ Use an edited decision file during a dry run:
 ```sh
 swift run passsync plan \
   --direction bidirectional \
-  --decision-file /tmp/passsync-decisions.json
+  --decision-file "$HOME/.passsync/decisions/passsync-decisions.json"
 ```
 
 Apply only after reviewing the decision-adjusted plan:
@@ -246,7 +248,7 @@ Apply only after reviewing the decision-adjusted plan:
 ```sh
 swift run passsync sync \
   --direction bidirectional \
-  --decision-file /tmp/passsync-decisions.json \
+  --decision-file "$HOME/.passsync/decisions/passsync-decisions.json" \
   --backup-path "$HOME/.passsync/backups/reviewed-sync.psbackup" \
   --apply
 ```
@@ -370,7 +372,7 @@ swift run passsync plan \
 Record metadata from a reviewed decision file or apply receipt:
 
 ```sh
-swift run passsync state-record-decision --input /tmp/passsync-decisions.json
+swift run passsync state-record-decision --input "$HOME/.passsync/decisions/passsync-decisions.json"
 swift run passsync state-record-receipt --input "$HOME/.passsync/audit/passsync-sync-example.receipt.json"
 ```
 
@@ -381,7 +383,7 @@ swift run passsync state-summary
 swift run passsync state-list-credentials --limit 25
 ```
 
-Use `--state-path /tmp/passsync-state.sqlite` for isolated tests. `--record-state` records non-secret snapshots during `plan`, `sync`, `simulate`, and `restore` workflows, plus decision-file and receipt metadata when those files are written. The state store is groundwork for safer future sync workflows; it does not enable continuous sync in v1.
+Use `--state-path /tmp/passsync-state.sqlite` only for isolated tests. `--record-state` records non-secret snapshots during `plan`, `sync`, `simulate`, and `restore` workflows, plus decision-file and receipt metadata when those files are written. The state store is groundwork for safer future sync workflows; it does not enable continuous sync in v1.
 
 ## Simulation
 
@@ -425,7 +427,7 @@ swift run passsync simulate \
   --input Examples/simulation-state.json \
   --direction bidirectional \
   --vault PassSync-Test \
-  --output /tmp/passsync-sim-decisions.json
+  --output "$HOME/.passsync/decisions/passsync-sim-decisions.json"
 ```
 
 Write a simulated output state while treating 1Password as the truth source:
@@ -433,7 +435,7 @@ Write a simulated output state while treating 1Password as the truth source:
 ```sh
 swift run passsync simulate \
   --input Examples/simulation-state.json \
-  --output /tmp/passsync-sim-output.json \
+  --output "$HOME/.passsync/simulations/passsync-sim-output.json" \
   --direction bidirectional \
   --truth-source 1password \
   --vault PassSync-Test \
@@ -446,7 +448,7 @@ Test an edited decision file in the simulator:
 swift run passsync simulate \
   --input Examples/simulation-state.json \
   --direction bidirectional \
-  --decision-file /tmp/passsync-sim-decisions.json
+  --decision-file "$HOME/.passsync/decisions/passsync-sim-decisions.json"
 ```
 
 Simulation deliberately mimics v1 provider limitations:

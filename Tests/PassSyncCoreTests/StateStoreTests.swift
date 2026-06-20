@@ -17,6 +17,16 @@ import Testing
     #expect(try store.schemaVersion() == StateStore.currentSchemaVersion)
 }
 
+@Test func stateStoreCreatesPrivateDirectoryAndDatabase() throws {
+    let directory = temporaryDirectory()
+    let store = StateStore(path: directory.appendingPathComponent("passsync.sqlite").path)
+
+    _ = try store.summary()
+
+    #expect(try SecureFileIO.permissions(at: directory.path) == 0o700)
+    #expect(try SecureFileIO.permissions(at: store.path) == 0o600)
+}
+
 @Test func stateStoreMigratesUnversionedDatabaseToCurrentSchema() throws {
     let path = temporaryStatePath()
     try setSQLiteUserVersion(path: path, version: 0)
