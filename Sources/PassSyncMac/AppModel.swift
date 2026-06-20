@@ -55,6 +55,8 @@ final class AppModel: ObservableObject {
 
     private var liveSnapshot: (onePassword: [CredentialRecord], apple: [CredentialRecord])?
     private var restoreSnapshot: [CredentialRecord]?
+    private var livePlanContext: LivePlanContext?
+    private var restorePlanContext: RestorePlanContext?
 
     func runPreflight() async {
         preflight = .loading
@@ -149,6 +151,15 @@ final class AppModel: ObservableObject {
         let allowPasswordOnly = liveAllowPasswordOnly
         let opPath = opPath
         let vault = normalizedVault(liveVault)
+        let context = LivePlanContext(
+            direction: direction,
+            truthSource: truthSource,
+            conflictPolicy: conflictPolicy,
+            vault: vault,
+            opPath: opPath,
+            backupPath: backupPath,
+            allowPasswordOnly: allowPasswordOnly
+        )
 
         do {
             let result = try await Task.detached { () throws -> (SyncPlan, [CredentialRecord], [CredentialRecord]) in
@@ -170,6 +181,7 @@ final class AppModel: ObservableObject {
             }.value
             livePlan = result.0
             liveSnapshot = (result.1, result.2)
+            livePlanContext = context
             liveMessage = "Live dry-run plan generated with \(result.0.actions.count) actions. Review before applying."
         } catch {
             liveError = String(describing: error)
@@ -185,6 +197,14 @@ final class AppModel: ObservableObject {
             liveError = "Live provider snapshot is missing. Run a live dry-run plan again."
             return
         }
+        guard let livePlanContext else {
+            liveError = "Live plan settings are missing. Run a live dry-run plan again."
+            return
+        }
+        guard currentLivePlanContext() == livePlanContext else {
+            liveError = "Live settings changed after the dry-run plan. Run a new dry plan before applying."
+            return
+        }
         guard !backupPassphrase.isEmpty else {
             liveError = "Backup passphrase is required before apply."
             return
@@ -197,11 +217,11 @@ final class AppModel: ObservableObject {
         isApplyingLivePlan = true
         liveError = nil
         liveMessage = nil
-        let backupPath = backupPath
+        let backupPath = livePlanContext.backupPath
         let backupPassphrase = backupPassphrase
-        let opPath = opPath
-        let vault = normalizedVault(liveVault)
-        let allowPasswordOnly = liveAllowPasswordOnly
+        let opPath = livePlanContext.opPath
+        let vault = livePlanContext.vault
+        let allowPasswordOnly = livePlanContext.allowPasswordOnly
 
         do {
             try await Task.detached {
@@ -255,6 +275,13 @@ final class AppModel: ObservableObject {
         let opPath = opPath
         let vault = normalizedVault(restoreVault)
         let allowPasswordOnly = restoreAllowPasswordOnly
+        let context = RestorePlanContext(
+            backupPath: backupPath,
+            target: target,
+            vault: vault,
+            opPath: opPath,
+            allowPasswordOnly: allowPasswordOnly
+        )
 
         do {
             let result = try await Task.detached { () throws -> (SyncPlan, [CredentialRecord]) in
@@ -276,6 +303,7 @@ final class AppModel: ObservableObject {
             }.value
             restorePlan = result.0
             restoreSnapshot = result.1
+            restorePlanContext = context
             restoreMessage = "Restore dry-run generated with \(result.0.actions.count) actions."
         } catch {
             restoreError = String(describing: error)
@@ -291,6 +319,14 @@ final class AppModel: ObservableObject {
             restoreError = "Current provider snapshot is missing. Run restore dry-run again."
             return
         }
+        guard let restorePlanContext else {
+            restoreError = "Restore plan settings are missing. Run restore dry-run again."
+            return
+        }
+        guard currentRestorePlanContext() == restorePlanContext else {
+            restoreError = "Restore settings changed after the dry-run plan. Run a new restore dry-run before applying."
+            return
+        }
         guard !restorePassphrase.isEmpty else {
             restoreError = "Backup passphrase is required."
             return
@@ -303,11 +339,11 @@ final class AppModel: ObservableObject {
         isApplyingRestorePlan = true
         restoreError = nil
         restoreMessage = nil
-        let target = restoreTarget
+        let target = restorePlanContext.target
         let passphrase = restorePassphrase
-        let opPath = opPath
-        let vault = normalizedVault(restoreVault)
-        let allowPasswordOnly = restoreAllowPasswordOnly
+        let opPath = restorePlanContext.opPath
+        let vault = restorePlanContext.vault
+        let allowPasswordOnly = restorePlanContext.allowPasswordOnly
         let safetyBackupPath = Self.defaultBackupPath(prefix: "passsync-pre-restore")
 
         do {
@@ -486,6 +522,28 @@ final class AppModel: ObservableObject {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    private func currentLivePlanContext() -> LivePlanContext {
+        LivePlanContext(
+            direction: liveDirection,
+            truthSource: liveTruthSource,
+            conflictPolicy: liveConflictPolicy,
+            vault: normalizedVault(liveVault),
+            opPath: opPath,
+            backupPath: backupPath,
+            allowPasswordOnly: liveAllowPasswordOnly
+        )
+    }
+
+    private func currentRestorePlanContext() -> RestorePlanContext {
+        RestorePlanContext(
+            backupPath: restoreBackupPath,
+            target: restoreTarget,
+            vault: normalizedVault(restoreVault),
+            opPath: opPath,
+            allowPasswordOnly: restoreAllowPasswordOnly
+        )
+    }
+
     private static func defaultBackupPath(prefix: String) -> String {
         defaultPrivateOutputPath(directory: "backups", prefix: prefix, extension: "psbackup")
     }
@@ -501,6 +559,24 @@ final class AppModel: ObservableObject {
     private static func defaultPrivateDirectory() -> String {
         "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync"
     }
+}
+
+private struct LivePlanContext: Equatable {
+    var direction: SyncDirection
+    var truthSource: TruthSource
+    var conflictPolicy: ConflictPolicy
+    var vault: String?
+    var opPath: String
+    var backupPath: String
+    var allowPasswordOnly: Bool
+}
+
+private struct RestorePlanContext: Equatable {
+    var backupPath: String
+    var target: RestoreTarget
+    var vault: String?
+    var opPath: String
+    var allowPasswordOnly: Bool
 }
 
 enum DecisionPlanTarget: String, CaseIterable, Identifiable {
