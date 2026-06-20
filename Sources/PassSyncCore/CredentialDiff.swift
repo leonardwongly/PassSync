@@ -7,7 +7,7 @@ public enum CredentialDiff {
         append(&diffs, field: .username, source: source.username, destination: destination.username)
         append(&diffs, field: .password, source: source.password, destination: destination.password, isSecret: true, redacted: redacted)
         append(&diffs, field: .urls, source: normalizedURLs(source.urls), destination: normalizedURLs(destination.urls))
-        append(&diffs, field: .notes, source: source.notes ?? "", destination: destination.notes ?? "")
+        append(&diffs, field: .notes, source: source.notes ?? "", destination: destination.notes ?? "", isSecret: true, redacted: redacted)
         append(&diffs, field: .totpURI, source: source.totpURI ?? "", destination: destination.totpURI ?? "", isSecret: true, redacted: redacted)
         append(&diffs, field: .hasPasskey, source: String(source.hasPasskey), destination: String(destination.hasPasskey))
         append(&diffs, field: .modifiedAt, source: format(source.modifiedAt), destination: format(destination.modifiedAt))
@@ -42,4 +42,3 @@ public enum CredentialDiff {
         return ISO8601DateFormatter().string(from: date)
     }
 }
-

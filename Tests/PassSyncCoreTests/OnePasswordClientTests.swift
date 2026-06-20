@@ -79,6 +79,64 @@ import Testing
     #expect(report.categories.contains { $0.category == "SSH_KEY" })
 }
 
+@Test func onePasswordUpdateErrorDoesNotExposeItemIdentifier() throws {
+    let runner = MockRunner(results: [
+        ProcessResult(stdout: Data(), stderr: Data("item failed".utf8), status: 1)
+    ])
+    let client = OnePasswordClient(runner: runner, opPath: "/mock/op")
+    let existing = CredentialRecord(
+        provider: .onePassword,
+        sourceID: "op-item-sensitive-id",
+        title: "Example",
+        username: "user@example.com",
+        password: "old-secret",
+        urls: ["https://example.com/login"]
+    )
+    let updated = CredentialRecord(
+        provider: .applePasswords,
+        title: "Example",
+        username: "user@example.com",
+        password: "new-secret",
+        urls: ["https://example.com/login"]
+    )
+
+    do {
+        try client.update(updated, existing: existing, vault: "Private")
+        Issue.record("Expected update failure.")
+    } catch let error as PassSyncError {
+        #expect(error.description.contains("op item edit <item-id>"))
+        #expect(!error.description.contains("op-item-sensitive-id"))
+    }
+}
+
+@Test func onePasswordPasskeyRefusalDoesNotExposeItemIdentifier() throws {
+    let client = OnePasswordClient(runner: MockRunner(results: []), opPath: "/mock/op")
+    let existing = CredentialRecord(
+        provider: .onePassword,
+        sourceID: "op-item-sensitive-id",
+        title: "Example",
+        username: "user@example.com",
+        password: "old-secret",
+        urls: ["https://example.com/login"],
+        hasPasskey: true
+    )
+    let updated = CredentialRecord(
+        provider: .applePasswords,
+        title: "Example",
+        username: "user@example.com",
+        password: "new-secret",
+        urls: ["https://example.com/login"]
+    )
+
+    do {
+        try client.update(updated, existing: existing, vault: "Private")
+        Issue.record("Expected passkey refusal.")
+    } catch let error as PassSyncError {
+        #expect(error.description.contains("Refusing to edit 1Password item"))
+        #expect(!error.description.contains("op-item-sensitive-id"))
+    }
+}
+
 @Test func syncExecutorPassesVaultToOnePasswordMutations() throws {
     let onePassword = MockOnePasswordManager()
     let apple = MockApplePasswordsManager()
