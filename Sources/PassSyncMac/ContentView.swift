@@ -197,6 +197,13 @@ private struct LivePlanView: View {
                         Label(model.isApplyingLivePlan ? "Applying..." : "Apply Reviewed Plan", systemImage: "arrow.triangle.2.circlepath")
                     }
                     .disabled(!canApply)
+                    .accessibilityHint(applyBlockReason ?? "Apply the reviewed live plan after writing an encrypted backup.")
+                }
+
+                if let applyBlockReason {
+                    Label(applyBlockReason, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -209,11 +216,31 @@ private struct LivePlanView: View {
     }
 
     private var canApply: Bool {
-        guard let plan = model.livePlan else { return false }
-        return !model.isRunningLivePlan &&
-            !model.isApplyingLivePlan &&
-            !model.backupPassphrase.isEmpty &&
-            plan.actions.allSatisfy { $0.kind != .conflict && $0.kind != .unsupported }
+        applyBlockReason == nil
+    }
+
+    private var applyBlockReason: String? {
+        if model.isRunningLivePlan {
+            return "Wait for the dry plan to finish before applying."
+        }
+        if model.isApplyingLivePlan {
+            return "The reviewed plan is already applying."
+        }
+        guard let plan = model.livePlan else {
+            return "Run a dry plan before applying."
+        }
+        if model.backupPassphrase.isEmpty {
+            return "Enter a backup passphrase before applying."
+        }
+        let conflictCount = plan.actions.filter { $0.kind == .conflict }.count
+        if conflictCount > 0 {
+            return "Resolve \(conflictCount) conflict\(conflictCount == 1 ? "" : "s") before applying."
+        }
+        let unsupportedCount = plan.actions.filter { $0.kind == .unsupported }.count
+        if unsupportedCount > 0 {
+            return "Unsupported passkey or TOTP actions block apply."
+        }
+        return nil
     }
 }
 
@@ -246,6 +273,13 @@ private struct RestoreView: View {
                         Label(model.isApplyingRestorePlan ? "Restoring..." : "Apply Restore", systemImage: "arrow.counterclockwise")
                     }
                     .disabled(!canApply)
+                    .accessibilityHint(applyBlockReason ?? "Apply the reviewed restore plan after writing an encrypted backup.")
+                }
+
+                if let applyBlockReason {
+                    Label(applyBlockReason, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -258,11 +292,31 @@ private struct RestoreView: View {
     }
 
     private var canApply: Bool {
-        guard let plan = model.restorePlan else { return false }
-        return !model.isRunningRestorePlan &&
-            !model.isApplyingRestorePlan &&
-            !model.restorePassphrase.isEmpty &&
-            plan.actions.allSatisfy { $0.kind != .conflict && $0.kind != .unsupported }
+        applyBlockReason == nil
+    }
+
+    private var applyBlockReason: String? {
+        if model.isRunningRestorePlan {
+            return "Wait for the restore plan to finish before applying."
+        }
+        if model.isApplyingRestorePlan {
+            return "The restore plan is already applying."
+        }
+        guard let plan = model.restorePlan else {
+            return "Run a restore plan before applying."
+        }
+        if model.restorePassphrase.isEmpty {
+            return "Enter the backup passphrase before applying."
+        }
+        let conflictCount = plan.actions.filter { $0.kind == .conflict }.count
+        if conflictCount > 0 {
+            return "Resolve \(conflictCount) restore conflict\(conflictCount == 1 ? "" : "s") before applying."
+        }
+        let unsupportedCount = plan.actions.filter { $0.kind == .unsupported }.count
+        if unsupportedCount > 0 {
+            return "Unsupported passkey or TOTP restore actions block apply."
+        }
+        return nil
     }
 }
 
