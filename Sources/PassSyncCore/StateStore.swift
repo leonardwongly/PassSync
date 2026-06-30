@@ -3,58 +3,46 @@ import SQLite3
 
 public struct StateCredentialSnapshot: Codable, Equatable, Sendable, Identifiable {
     public var provider: Provider
-    public var key: CredentialKey
-    public var sourceID: String?
-    public var vaultID: String?
-    public var title: String
+    public var keyFingerprint: String
     public var urlCount: Int
     public var hasTOTP: Bool
     public var hasPasskey: Bool
     public var modifiedAt: Date?
-    public var rawFingerprint: String?
     public var observedAt: Date
 
     public init(
         provider: Provider,
-        key: CredentialKey,
-        sourceID: String?,
-        vaultID: String?,
-        title: String,
+        keyFingerprint: String,
         urlCount: Int,
         hasTOTP: Bool,
         hasPasskey: Bool,
         modifiedAt: Date?,
-        rawFingerprint: String?,
         observedAt: Date
     ) {
         self.provider = provider
-        self.key = key
-        self.sourceID = sourceID
-        self.vaultID = vaultID
-        self.title = title
+        self.keyFingerprint = keyFingerprint
         self.urlCount = urlCount
         self.hasTOTP = hasTOTP
         self.hasPasskey = hasPasskey
         self.modifiedAt = modifiedAt
-        self.rawFingerprint = rawFingerprint
         self.observedAt = observedAt
     }
 
     public init(record: CredentialRecord, key: CredentialKey, observedAt: Date = Date()) {
         self.provider = record.provider
-        self.key = key
-        self.sourceID = record.sourceID
-        self.vaultID = record.vaultID
-        self.title = record.title
+        self.keyFingerprint = Self.fingerprint(for: key)
         self.urlCount = record.urls.count
         self.hasTOTP = record.totpURI != nil
         self.hasPasskey = record.hasPasskey
         self.modifiedAt = record.modifiedAt
-        self.rawFingerprint = record.rawFingerprint
         self.observedAt = observedAt
     }
 
-    public var id: String { "\(provider.rawValue)-\(key.description)" }
+    public var id: String { "\(provider.rawValue)-\(keyFingerprint)" }
+
+    private static func fingerprint(for key: CredentialKey) -> String {
+        SHA256Fingerprint.hex(Data("\(key.host)\u{0}\(key.username)".utf8))
+    }
 }
 
 public struct StateStoreSummary: Codable, Equatable, Sendable {
@@ -67,7 +55,7 @@ public struct StateStoreSummary: Codable, Equatable, Sendable {
 }
 
 public struct StateStore: Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public var path: String
 
@@ -81,7 +69,10 @@ public struct StateStore: Sendable {
             guard version <= Self.currentSchemaVersion else {
                 throw PassSyncError.unsupported("State store schema version \(version) is newer than this PassSync build supports.")
             }
-            try createV1Schema(db)
+            if version == 1 {
+                try migrateV1ToV2(db)
+            }
+            try createV2Schema(db)
             if version < Self.currentSchemaVersion {
                 try setSchemaVersion(Self.currentSchemaVersion, db: db)
             }
@@ -149,9 +140,9 @@ public struct StateStore: Sendable {
         try initialize()
         return try withDatabase { db in
             let sql = """
-            SELECT provider, host, username, source_id, vault_id, title, url_count, has_totp, has_passkey, modified_at, raw_fingerprint, observed_at
+            SELECT provider, key_fingerprint, url_count, has_totp, has_passkey, modified_at, observed_at
             FROM credential_snapshots
-            ORDER BY observed_at DESC, provider, host, username
+            ORDER BY observed_at DESC, provider, key_fingerprint
             LIMIT ?;
             """
             var statement: OpaquePointer?
@@ -163,19 +154,14 @@ public struct StateStore: Sendable {
             var snapshots: [StateCredentialSnapshot] = []
             while sqlite3_step(statement) == SQLITE_ROW {
                 let provider = Provider(rawValue: stringColumn(statement, 0)) ?? .onePassword
-                let key = CredentialKey(host: stringColumn(statement, 1), username: stringColumn(statement, 2))
                 snapshots.append(StateCredentialSnapshot(
                     provider: provider,
-                    key: key,
-                    sourceID: optionalStringColumn(statement, 3),
-                    vaultID: optionalStringColumn(statement, 4),
-                    title: stringColumn(statement, 5),
-                    urlCount: Int(sqlite3_column_int(statement, 6)),
-                    hasTOTP: sqlite3_column_int(statement, 7) == 1,
-                    hasPasskey: sqlite3_column_int(statement, 8) == 1,
-                    modifiedAt: parseDate(optionalStringColumn(statement, 9)),
-                    rawFingerprint: optionalStringColumn(statement, 10),
-                    observedAt: parseDate(optionalStringColumn(statement, 11)) ?? .distantPast
+                    keyFingerprint: stringColumn(statement, 1),
+                    urlCount: Int(sqlite3_column_int(statement, 2)),
+                    hasTOTP: sqlite3_column_int(statement, 3) == 1,
+                    hasPasskey: sqlite3_column_int(statement, 4) == 1,
+                    modifiedAt: parseDate(optionalStringColumn(statement, 5)),
+                    observedAt: parseDate(optionalStringColumn(statement, 6)) ?? .distantPast
                 ))
             }
             return snapshots
@@ -184,11 +170,12 @@ public struct StateStore: Sendable {
 
     private func withDatabase<T>(_ body: (OpaquePointer) throws -> T) throws -> T {
         let url = URL(fileURLWithPath: path)
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try SecureFileIO.createPrivateParentDirectory(for: url)
         var db: OpaquePointer?
         guard sqlite3_open(url.path, &db) == SQLITE_OK, let db else {
             throw PassSyncError.decodingFailed("Could not open state store at \(path).")
         }
+        try SecureFileIO.secureExistingFile(at: url)
         defer { sqlite3_close(db) }
         return try body(db)
     }
@@ -196,32 +183,23 @@ public struct StateStore: Sendable {
     private func upsert(_ snapshot: StateCredentialSnapshot, db: OpaquePointer) throws {
         let sql = """
         INSERT INTO credential_snapshots (
-          provider, host, username, source_id, vault_id, title, url_count, has_totp, has_passkey, modified_at, raw_fingerprint, observed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(provider, host, username) DO UPDATE SET
-          source_id=excluded.source_id,
-          vault_id=excluded.vault_id,
-          title=excluded.title,
+          provider, key_fingerprint, url_count, has_totp, has_passkey, modified_at, observed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(provider, key_fingerprint) DO UPDATE SET
           url_count=excluded.url_count,
           has_totp=excluded.has_totp,
           has_passkey=excluded.has_passkey,
           modified_at=excluded.modified_at,
-          raw_fingerprint=excluded.raw_fingerprint,
           observed_at=excluded.observed_at;
         """
         try withStatement(db, sql) { statement in
             bind(statement, 1, snapshot.provider.rawValue)
-            bind(statement, 2, snapshot.key.host)
-            bind(statement, 3, snapshot.key.username)
-            bind(statement, 4, snapshot.sourceID)
-            bind(statement, 5, snapshot.vaultID)
-            bind(statement, 6, snapshot.title)
-            sqlite3_bind_int(statement, 7, Int32(snapshot.urlCount))
-            sqlite3_bind_int(statement, 8, snapshot.hasTOTP ? 1 : 0)
-            sqlite3_bind_int(statement, 9, snapshot.hasPasskey ? 1 : 0)
-            bind(statement, 10, formatDate(snapshot.modifiedAt))
-            bind(statement, 11, snapshot.rawFingerprint)
-            bind(statement, 12, formatDate(snapshot.observedAt))
+            bind(statement, 2, snapshot.keyFingerprint)
+            sqlite3_bind_int(statement, 3, Int32(snapshot.urlCount))
+            sqlite3_bind_int(statement, 4, snapshot.hasTOTP ? 1 : 0)
+            sqlite3_bind_int(statement, 5, snapshot.hasPasskey ? 1 : 0)
+            bind(statement, 6, formatDate(snapshot.modifiedAt))
+            bind(statement, 7, formatDate(snapshot.observedAt))
             guard sqlite3_step(statement) == SQLITE_DONE else {
                 throw sqliteError(db, context: "upsert credential snapshot")
             }
@@ -267,22 +245,17 @@ public struct StateStore: Sendable {
         }
     }
 
-    private func createV1Schema(_ db: OpaquePointer) throws {
+    private func createV2Schema(_ db: OpaquePointer) throws {
         try execute(db, """
         CREATE TABLE IF NOT EXISTS credential_snapshots (
           provider TEXT NOT NULL,
-          host TEXT NOT NULL,
-          username TEXT NOT NULL,
-          source_id TEXT,
-          vault_id TEXT,
-          title TEXT NOT NULL,
+          key_fingerprint TEXT NOT NULL,
           url_count INTEGER NOT NULL,
           has_totp INTEGER NOT NULL,
           has_passkey INTEGER NOT NULL,
           modified_at TEXT,
-          raw_fingerprint TEXT,
           observed_at TEXT NOT NULL,
-          PRIMARY KEY(provider, host, username)
+          PRIMARY KEY(provider, key_fingerprint)
         );
         """)
         try execute(db, """
@@ -308,6 +281,69 @@ public struct StateStore: Sendable {
           mutating_action_count INTEGER NOT NULL
         );
         """)
+    }
+
+    private func migrateV1ToV2(_ db: OpaquePointer) throws {
+        try execute(db, """
+        CREATE TABLE IF NOT EXISTS credential_snapshots_v2 (
+          provider TEXT NOT NULL,
+          key_fingerprint TEXT NOT NULL,
+          url_count INTEGER NOT NULL,
+          has_totp INTEGER NOT NULL,
+          has_passkey INTEGER NOT NULL,
+          modified_at TEXT,
+          observed_at TEXT NOT NULL,
+          PRIMARY KEY(provider, key_fingerprint)
+        );
+        """)
+
+        let sql = """
+        SELECT provider, host, username, url_count, has_totp, has_passkey, modified_at, observed_at
+        FROM credential_snapshots;
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
+            throw sqliteError(db, context: "prepare v1 credential snapshot migration")
+        }
+
+        while sqlite3_step(statement) == SQLITE_ROW {
+            let key = CredentialKey(host: stringColumn(statement, 1), username: stringColumn(statement, 2))
+            let snapshot = StateCredentialSnapshot(
+                provider: Provider(rawValue: stringColumn(statement, 0)) ?? .onePassword,
+                keyFingerprint: SHA256Fingerprint.hex(Data("\(key.host)\u{0}\(key.username)".utf8)),
+                urlCount: Int(sqlite3_column_int(statement, 3)),
+                hasTOTP: sqlite3_column_int(statement, 4) == 1,
+                hasPasskey: sqlite3_column_int(statement, 5) == 1,
+                modifiedAt: parseDate(optionalStringColumn(statement, 6)),
+                observedAt: parseDate(optionalStringColumn(statement, 7)) ?? .distantPast
+            )
+            try upsertMigrated(snapshot, db: db)
+        }
+        sqlite3_finalize(statement)
+
+        try execute(db, "DROP TABLE credential_snapshots;")
+        try execute(db, "ALTER TABLE credential_snapshots_v2 RENAME TO credential_snapshots;")
+        try execute(db, "VACUUM;")
+    }
+
+    private func upsertMigrated(_ snapshot: StateCredentialSnapshot, db: OpaquePointer) throws {
+        let sql = """
+        INSERT OR REPLACE INTO credential_snapshots_v2 (
+          provider, key_fingerprint, url_count, has_totp, has_passkey, modified_at, observed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?);
+        """
+        try withStatement(db, sql) { statement in
+            bind(statement, 1, snapshot.provider.rawValue)
+            bind(statement, 2, snapshot.keyFingerprint)
+            sqlite3_bind_int(statement, 3, Int32(snapshot.urlCount))
+            sqlite3_bind_int(statement, 4, snapshot.hasTOTP ? 1 : 0)
+            sqlite3_bind_int(statement, 5, snapshot.hasPasskey ? 1 : 0)
+            bind(statement, 6, formatDate(snapshot.modifiedAt))
+            bind(statement, 7, formatDate(snapshot.observedAt))
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw sqliteError(db, context: "upsert migrated credential snapshot")
+            }
+        }
     }
 
     private func schemaVersion(_ db: OpaquePointer) throws -> Int {

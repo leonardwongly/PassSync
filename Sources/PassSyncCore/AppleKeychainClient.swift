@@ -143,16 +143,13 @@ public struct AppleKeychainClient: ApplePasswordsManaging {
         return query
     }
 
-    private func keychainUpdateAttributes(for record: CredentialRecord) -> [String: Any] {
-        var attributes: [String: Any] = [
+    func keychainUpdateAttributes(for record: CredentialRecord) -> [String: Any] {
+        [
             kSecValueData as String: Data(record.password.utf8),
             kSecAttrLabel as String: record.title,
-            kSecAttrDescription as String: record.title
+            kSecAttrDescription as String: record.title,
+            kSecAttrComment as String: record.notes ?? ""
         ]
-        if let notes = record.notes {
-            attributes[kSecAttrComment as String] = notes
-        }
-        return attributes
     }
 
     private func protocolAttribute(for scheme: String?) -> CFString? {

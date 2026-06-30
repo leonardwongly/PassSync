@@ -38,9 +38,6 @@ public enum SyncDirection: String, Codable, Sendable, CaseIterable {
     case onePasswordToApple = "1p-to-apple"
     case appleToOnePassword = "apple-to-1p"
     case bidirectional
-
-    public var needsOnePasswordRead: Bool { true }
-    public var needsAppleRead: Bool { true }
 }
 
 public enum TruthSource: String, Codable, Sendable, CaseIterable {

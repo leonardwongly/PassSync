@@ -48,6 +48,9 @@ swift run passsync simulate \
 ```
 
 The simulator writes only the output JSON file. It does not touch 1Password, Apple Passwords, Keychain, or backup directories.
+The `/tmp` paths in this testing guide are for synthetic fixtures only. Do not
+write real credential data to shared temporary paths; use `~/.passsync/...`
+private paths for real operator files.
 
 Export and re-read a decision file offline:
 
@@ -154,6 +157,10 @@ swift run passsync backup \
   --backup-path "$HOME/.passsync/backups/pre-apply-test.psbackup" \
   --vault PassSync-Test
 ```
+
+The environment passphrase is test/CI-only. Use the interactive passphrase
+prompt for real backups so passphrases do not land in shell history, inherited
+process environments, or logs.
 
 Verify the backup decrypts:
 

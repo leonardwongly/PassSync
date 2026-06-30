@@ -24,13 +24,17 @@ final class AppModel: ObservableObject {
     @Published var isApplyingLivePlan = false
     @Published var isRunningRestorePlan = false
     @Published var isApplyingRestorePlan = false
+    @Published var isLoadingDecisionFile = false
+    @Published var isSavingDecisionFile = false
+    @Published var isScanningBackups = false
+    @Published var isScanningAudits = false
 
     @Published var simulationDirection: SyncDirection = .bidirectional
     @Published var simulationTruthSource: TruthSource = .none
     @Published var simulationConflictPolicy: ConflictPolicy = .interactive
     @Published var simulationVault = "PassSync-Test"
     @Published var simulationAllowPasswordOnly = false
-    @Published var simulationOutputPath = "/tmp/passsync-sim-output.json"
+    @Published var simulationOutputPath = AppModel.defaultPrivateOutputPath(directory: "simulations", prefix: "passsync-sim-output", extension: "json")
 
     @Published var liveDirection: SyncDirection = .bidirectional
     @Published var liveTruthSource: TruthSource = .none
@@ -38,16 +42,16 @@ final class AppModel: ObservableObject {
     @Published var liveVault = ""
     @Published var liveAllowPasswordOnly = false
     @Published var opPath = "/opt/homebrew/bin/op"
-    @Published var backupPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups/passsync-app.psbackup"
+    @Published var backupPath = AppModel.defaultBackupPath(prefix: "passsync-app")
     @Published var backupPassphrase = ""
 
-    @Published var restoreBackupPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups/passsync-app.psbackup"
+    @Published var restoreBackupPath = AppModel.defaultBackupPath(prefix: "passsync-app")
     @Published var restoreTarget: RestoreTarget = .onePassword
     @Published var restoreVault = ""
     @Published var restorePassphrase = ""
     @Published var restoreAllowPasswordOnly = false
-    @Published var decisionOutputPath = "/tmp/passsync-decisions.json"
-    @Published var decisionInputPath = "/tmp/passsync-decisions.json"
+    @Published var decisionOutputPath = AppModel.defaultPrivateOutputPath(directory: "decisions", prefix: "passsync-decisions", extension: "json")
+    @Published var decisionInputPath = AppModel.defaultPrivateOutputPath(directory: "decisions", prefix: "passsync-decisions", extension: "json")
     @Published var decisionPlanTarget: DecisionPlanTarget = .live
     @Published var loadedDecisionFile: PlanDecisionFile?
     @Published var backupInventoryPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups"
@@ -55,6 +59,8 @@ final class AppModel: ObservableObject {
 
     private var liveSnapshot: (onePassword: [CredentialRecord], apple: [CredentialRecord])?
     private var restoreSnapshot: [CredentialRecord]?
+    private var livePlanContext: LivePlanContext?
+    private var restorePlanContext: RestorePlanContext?
 
     func runPreflight() async {
         preflight = .loading
@@ -121,7 +127,11 @@ final class AppModel: ObservableObject {
 
         do {
             let store = SimulationStore(state: SampleSimulationData.state)
-            try SyncExecutor(onePassword: store, applePasswords: store).apply(
+            try SyncExecutor(
+                onePassword: store,
+                applePasswords: store,
+                allowPasswordOnlyForUnsupportedSecurityMaterial: simulationAllowPasswordOnly
+            ).apply(
                 plan: plan,
                 onePasswordVault: normalizedVault(simulationVault)
             )
@@ -145,6 +155,15 @@ final class AppModel: ObservableObject {
         let allowPasswordOnly = liveAllowPasswordOnly
         let opPath = opPath
         let vault = normalizedVault(liveVault)
+        let context = LivePlanContext(
+            direction: direction,
+            truthSource: truthSource,
+            conflictPolicy: conflictPolicy,
+            vault: vault,
+            opPath: opPath,
+            backupPath: backupPath,
+            allowPasswordOnly: allowPasswordOnly
+        )
 
         do {
             let result = try await Task.detached { () throws -> (SyncPlan, [CredentialRecord], [CredentialRecord]) in
@@ -166,6 +185,7 @@ final class AppModel: ObservableObject {
             }.value
             livePlan = result.0
             liveSnapshot = (result.1, result.2)
+            livePlanContext = context
             liveMessage = "Live dry-run plan generated with \(result.0.actions.count) actions. Review before applying."
         } catch {
             liveError = String(describing: error)
@@ -181,6 +201,14 @@ final class AppModel: ObservableObject {
             liveError = "Live provider snapshot is missing. Run a live dry-run plan again."
             return
         }
+        guard let livePlanContext else {
+            liveError = "Live plan settings are missing. Run a live dry-run plan again."
+            return
+        }
+        guard currentLivePlanContext() == livePlanContext else {
+            liveError = "Live settings changed after the dry-run plan. Run a new dry plan before applying."
+            return
+        }
         guard !backupPassphrase.isEmpty else {
             liveError = "Backup passphrase is required before apply."
             return
@@ -193,10 +221,11 @@ final class AppModel: ObservableObject {
         isApplyingLivePlan = true
         liveError = nil
         liveMessage = nil
-        let backupPath = backupPath
+        let backupPath = livePlanContext.backupPath
         let backupPassphrase = backupPassphrase
-        let opPath = opPath
-        let vault = normalizedVault(liveVault)
+        let opPath = livePlanContext.opPath
+        let vault = livePlanContext.vault
+        let allowPasswordOnly = livePlanContext.allowPasswordOnly
 
         do {
             try await Task.detached {
@@ -214,12 +243,18 @@ final class AppModel: ObservableObject {
                 )
                 let onePassword = OnePasswordClient(runner: ProcessRunner(), opPath: opPath)
                 let apple = AppleKeychainClient()
-                try SyncExecutor(onePassword: onePassword, applePasswords: apple).apply(
+                try SyncExecutor(
+                    onePassword: onePassword,
+                    applePasswords: apple,
+                    allowPasswordOnlyForUnsupportedSecurityMaterial: allowPasswordOnly
+                ).apply(
                     plan: livePlan,
                     onePasswordVault: vault
                 )
             }.value
             liveMessage = "Sync applied. Encrypted backup written to \(backupPath)."
+            restoreBackupPath = backupPath
+            self.backupPath = Self.defaultBackupPath(prefix: "passsync-app")
         } catch {
             liveError = String(describing: error)
         }
@@ -244,6 +279,13 @@ final class AppModel: ObservableObject {
         let opPath = opPath
         let vault = normalizedVault(restoreVault)
         let allowPasswordOnly = restoreAllowPasswordOnly
+        let context = RestorePlanContext(
+            backupPath: backupPath,
+            target: target,
+            vault: vault,
+            opPath: opPath,
+            allowPasswordOnly: allowPasswordOnly
+        )
 
         do {
             let result = try await Task.detached { () throws -> (SyncPlan, [CredentialRecord]) in
@@ -265,6 +307,7 @@ final class AppModel: ObservableObject {
             }.value
             restorePlan = result.0
             restoreSnapshot = result.1
+            restorePlanContext = context
             restoreMessage = "Restore dry-run generated with \(result.0.actions.count) actions."
         } catch {
             restoreError = String(describing: error)
@@ -280,6 +323,14 @@ final class AppModel: ObservableObject {
             restoreError = "Current provider snapshot is missing. Run restore dry-run again."
             return
         }
+        guard let restorePlanContext else {
+            restoreError = "Restore plan settings are missing. Run restore dry-run again."
+            return
+        }
+        guard currentRestorePlanContext() == restorePlanContext else {
+            restoreError = "Restore settings changed after the dry-run plan. Run a new restore dry-run before applying."
+            return
+        }
         guard !restorePassphrase.isEmpty else {
             restoreError = "Backup passphrase is required."
             return
@@ -292,11 +343,12 @@ final class AppModel: ObservableObject {
         isApplyingRestorePlan = true
         restoreError = nil
         restoreMessage = nil
-        let target = restoreTarget
+        let target = restorePlanContext.target
         let passphrase = restorePassphrase
-        let opPath = opPath
-        let vault = normalizedVault(restoreVault)
-        let safetyBackupPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync/backups/passsync-pre-restore-\(Int(Date().timeIntervalSince1970)).psbackup"
+        let opPath = restorePlanContext.opPath
+        let vault = restorePlanContext.vault
+        let allowPasswordOnly = restorePlanContext.allowPasswordOnly
+        let safetyBackupPath = Self.defaultBackupPath(prefix: "passsync-pre-restore")
 
         do {
             try await Task.detached {
@@ -308,7 +360,11 @@ final class AppModel: ObservableObject {
                 try BackupManager().writeEncryptedBackup(payload: safetyPayload, passphrase: passphrase, outputPath: safetyBackupPath)
                 let onePassword = OnePasswordClient(runner: ProcessRunner(), opPath: opPath)
                 let apple = AppleKeychainClient()
-                try SyncExecutor(onePassword: onePassword, applePasswords: apple).apply(
+                try SyncExecutor(
+                    onePassword: onePassword,
+                    applePasswords: apple,
+                    allowPasswordOnlyForUnsupportedSecurityMaterial: allowPasswordOnly
+                ).apply(
                     plan: restorePlan,
                     onePasswordVault: vault
                 )
@@ -320,58 +376,73 @@ final class AppModel: ObservableObject {
         isApplyingRestorePlan = false
     }
 
-    func exportLatestDecisionFile() {
+    func exportLatestDecisionFile() async {
         guard let plan = livePlan ?? simulationPlan ?? restorePlan else {
             conflictReviewError = "Run a simulation, live plan, or restore plan first."
             return
         }
 
+        let outputPath = decisionOutputPath
+        isSavingDecisionFile = true
+        defer { isSavingDecisionFile = false }
         do {
-            let decisions = PlanDecisionFiles.export(from: plan)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            let outputURL = URL(fileURLWithPath: decisionOutputPath)
-            try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try encoder.encode(decisions).write(to: outputURL, options: [.atomic])
+            let decisionCount = try await Task.detached(priority: .userInitiated) { () throws -> Int in
+                let decisions = PlanDecisionFiles.export(from: plan)
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                encoder.dateEncodingStrategy = .iso8601
+                let outputURL = URL(fileURLWithPath: outputPath)
+                try SecureFileIO.writePrivateData(try encoder.encode(decisions), to: outputURL)
+                return decisions.decisions.count
+            }.value
             conflictReviewError = nil
-            conflictReviewMessage = "Decision file written to \(decisionOutputPath)."
+            conflictReviewMessage = "Decision file with \(decisionCount) decision(s) written to \(outputPath)."
         } catch {
             conflictReviewMessage = nil
             conflictReviewError = String(describing: error)
         }
     }
 
-    func loadDecisionFile() {
+    func loadDecisionFile() async {
+        let inputPath = decisionInputPath
+        isLoadingDecisionFile = true
+        defer { isLoadingDecisionFile = false }
         do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            loadedDecisionFile = try decoder.decode(
-                PlanDecisionFile.self,
-                from: Data(contentsOf: URL(fileURLWithPath: decisionInputPath))
-            )
+            let file = try await Task.detached(priority: .userInitiated) { () throws -> PlanDecisionFile in
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                return try decoder.decode(
+                    PlanDecisionFile.self,
+                    from: Data(contentsOf: URL(fileURLWithPath: inputPath))
+                )
+            }.value
+            loadedDecisionFile = file
             conflictReviewError = nil
-            conflictReviewMessage = "Loaded \(loadedDecisionFile?.decisions.count ?? 0) decision(s) from \(decisionInputPath)."
+            conflictReviewMessage = "Loaded \(file.decisions.count) decision(s) from \(inputPath)."
         } catch {
             conflictReviewMessage = nil
             conflictReviewError = "Could not load decision file: \(error)"
         }
     }
 
-    func saveLoadedDecisionFile() {
+    func saveLoadedDecisionFile() async {
         guard let loadedDecisionFile else {
             conflictReviewError = "Load or export a decision file first."
             return
         }
+        let outputPath = decisionOutputPath
+        isSavingDecisionFile = true
+        defer { isSavingDecisionFile = false }
         do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            let outputURL = URL(fileURLWithPath: decisionOutputPath)
-            try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try encoder.encode(loadedDecisionFile).write(to: outputURL, options: [.atomic])
+            try await Task.detached(priority: .userInitiated) {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                encoder.dateEncodingStrategy = .iso8601
+                let outputURL = URL(fileURLWithPath: outputPath)
+                try SecureFileIO.writePrivateData(try encoder.encode(loadedDecisionFile), to: outputURL)
+            }.value
             conflictReviewError = nil
-            conflictReviewMessage = "Saved edited decision file to \(decisionOutputPath)."
+            conflictReviewMessage = "Saved edited decision file to \(outputPath)."
         } catch {
             conflictReviewMessage = nil
             conflictReviewError = "Could not save decision file: \(error)"
@@ -443,17 +514,25 @@ final class AppModel: ObservableObject {
         loadedDecisionFile = file
     }
 
-    func loadBackupInventory() {
+    func loadBackupInventory() async {
         let path = backupInventoryPath
-        let items = BackupInventory().scan(path: path)
+        isScanningBackups = true
+        defer { isScanningBackups = false }
+        let items = await Task.detached(priority: .userInitiated) {
+            BackupInventory().scan(path: path)
+        }.value
         backupInventory = items
         recoveryError = nil
         recoveryMessage = "Found \(items.count) backup item(s)."
     }
 
-    func loadAuditInventory() {
+    func loadAuditInventory() async {
         let path = auditInventoryPath
-        let items = AuditInventory().scan(path: path)
+        isScanningAudits = true
+        defer { isScanningAudits = false }
+        let items = await Task.detached(priority: .userInitiated) {
+            AuditInventory().scan(path: path)
+        }.value
         auditInventory = items
         recoveryError = nil
         recoveryMessage = "Found \(items.count) audit receipt item(s)."
@@ -464,14 +543,69 @@ final class AppModel: ObservableObject {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let outputURL = URL(fileURLWithPath: path)
-        try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try encoder.encode(state).write(to: outputURL, options: [.atomic])
+        try SecureFileIO.writePrivateData(try encoder.encode(state), to: outputURL)
     }
 
     private func normalizedVault(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
+
+    private func currentLivePlanContext() -> LivePlanContext {
+        LivePlanContext(
+            direction: liveDirection,
+            truthSource: liveTruthSource,
+            conflictPolicy: liveConflictPolicy,
+            vault: normalizedVault(liveVault),
+            opPath: opPath,
+            backupPath: backupPath,
+            allowPasswordOnly: liveAllowPasswordOnly
+        )
+    }
+
+    private func currentRestorePlanContext() -> RestorePlanContext {
+        RestorePlanContext(
+            backupPath: restoreBackupPath,
+            target: restoreTarget,
+            vault: normalizedVault(restoreVault),
+            opPath: opPath,
+            allowPasswordOnly: restoreAllowPasswordOnly
+        )
+    }
+
+    private static func defaultBackupPath(prefix: String) -> String {
+        defaultPrivateOutputPath(directory: "backups", prefix: prefix, extension: "psbackup")
+    }
+
+    private static func defaultPrivateOutputPath(directory: String, prefix: String, extension: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
+        let stamp = formatter.string(from: Date()).replacingOccurrences(of: ":", with: "")
+        let suffix = UUID().uuidString.prefix(8)
+        return "\(defaultPrivateDirectory())/\(directory)/\(prefix)-\(stamp)-\(suffix).\(`extension`)"
+    }
+
+    private static func defaultPrivateDirectory() -> String {
+        "\(FileManager.default.homeDirectoryForCurrentUser.path)/.passsync"
+    }
+}
+
+private struct LivePlanContext: Equatable {
+    var direction: SyncDirection
+    var truthSource: TruthSource
+    var conflictPolicy: ConflictPolicy
+    var vault: String?
+    var opPath: String
+    var backupPath: String
+    var allowPasswordOnly: Bool
+}
+
+private struct RestorePlanContext: Equatable {
+    var backupPath: String
+    var target: RestoreTarget
+    var vault: String?
+    var opPath: String
+    var allowPasswordOnly: Bool
 }
 
 enum DecisionPlanTarget: String, CaseIterable, Identifiable {

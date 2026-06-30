@@ -100,3 +100,13 @@ expect_failure \
   env PASSSYNC_BACKUP_PASSPHRASE=cli-regression-passphrase \
     "$PASSSYNC_BIN" restore-check \
     --backup-path Examples/malformed-backup-envelope.json
+
+help_output="$("$PASSSYNC_BIN" --help)"
+if ! grep -q "TOTP-bearing records only" <<<"$help_output"; then
+  echo "Expected help to describe password-only downgrade as TOTP-only." >&2
+  exit 1
+fi
+if grep -q "TOTP/passkey material" <<<"$help_output"; then
+  echo "Help must not imply passkeys can use the password-only downgrade flag." >&2
+  exit 1
+fi

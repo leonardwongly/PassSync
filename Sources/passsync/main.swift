@@ -260,7 +260,11 @@ struct PassSyncCLI {
         try BackupManager().writeEncryptedBackup(payload: backupPayload, passphrase: passphrase, outputPath: backupPath)
         print("Encrypted backup written: \(backupPath)")
 
-        let executor = SyncExecutor(onePassword: onePassword, applePasswords: apple)
+        let executor = SyncExecutor(
+            onePassword: onePassword,
+            applePasswords: apple,
+            allowPasswordOnlyForUnsupportedSecurityMaterial: options.allowPasswordOnly
+        )
         try executor.apply(plan: syncPlan, onePasswordVault: options.vault)
         let verification = postApplySyncVerification(
             options: options,
@@ -415,8 +419,7 @@ struct PassSyncCLI {
         print("PassSync credential snapshots")
         print("- count: \(snapshots.count)")
         for snapshot in snapshots {
-            print("[\(snapshot.provider.rawValue)] \(snapshot.key)")
-            print("  - title: \(snapshot.title)")
+            print("[\(snapshot.provider.rawValue)] key fingerprint: \(snapshot.keyFingerprint)")
             print("  - urls: \(snapshot.urlCount)")
             print("  - totp: \(snapshot.hasTOTP)")
             print("  - passkey: \(snapshot.hasPasskey)")
@@ -609,7 +612,11 @@ struct PassSyncCLI {
 
         let onePassword = OnePasswordClient(runner: ProcessRunner(), opPath: options.opPath)
         let apple = AppleKeychainClient()
-        try SyncExecutor(onePassword: onePassword, applePasswords: apple).apply(
+        try SyncExecutor(
+            onePassword: onePassword,
+            applePasswords: apple,
+            allowPasswordOnlyForUnsupportedSecurityMaterial: options.allowPasswordOnly
+        ).apply(
             plan: restorePlan,
             onePasswordVault: options.vault
         )
@@ -701,7 +708,11 @@ struct PassSyncCLI {
             syncPlan = try resolveInteractiveConflicts(syncPlan, allowPasswordOnly: options.allowPasswordOnly)
         }
 
-        let executor = SyncExecutor(onePassword: store, applePasswords: store)
+        let executor = SyncExecutor(
+            onePassword: store,
+            applePasswords: store,
+            allowPasswordOnlyForUnsupportedSecurityMaterial: options.allowPasswordOnly
+        )
         try executor.apply(plan: syncPlan, onePasswordVault: options.vault)
         try writeSimulationState(store.state, path: outputPath)
         try recordCredentialsIfRequested(store.state.onePasswordRecords + store.state.appleRecords, options: options, label: "simulation output snapshot")
@@ -1024,8 +1035,7 @@ struct PassSyncCLI {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let outputURL = URL(fileURLWithPath: path)
-        try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try encoder.encode(state).write(to: outputURL, options: [.atomic])
+        try SecureFileIO.writePrivateData(try encoder.encode(state), to: outputURL)
     }
 
     private static func readDecisionFile(path: String) throws -> PlanDecisionFile {
@@ -1043,8 +1053,7 @@ struct PassSyncCLI {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let outputURL = URL(fileURLWithPath: path)
-        try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try encoder.encode(decisions).write(to: outputURL, options: [.atomic])
+        try SecureFileIO.writePrivateData(try encoder.encode(decisions), to: outputURL)
     }
 
     private static let usage = """
@@ -1093,14 +1102,15 @@ struct PassSyncCLI {
       --json                     Print redacted JSON plan.
       --record-state             Record non-secret snapshots/decisions/receipts into the SQLite state store.
       --allow-password-only-for-unsupported-security-material
-                                 Allow password-only writes when Apple cannot accept TOTP/passkey material.
+                                 Allow explicit password-only Apple writes for TOTP-bearing records only.
       --apply                    Mutate. Without --apply, sync is a dry run.
 
     Security defaults:
       - Dry-run by default.
       - Encrypted backup is written before every apply.
       - Secrets are redacted from plans.
-      - Passkey-bearing records and Apple-destination TOTP records fail closed unless explicitly allowed.
+      - Passkey-bearing records always fail closed.
+      - Apple-destination TOTP records fail closed unless password-only writes are explicitly allowed.
     """
 }
 

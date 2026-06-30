@@ -197,6 +197,13 @@ private struct LivePlanView: View {
                         Label(model.isApplyingLivePlan ? "Applying..." : "Apply Reviewed Plan", systemImage: "arrow.triangle.2.circlepath")
                     }
                     .disabled(!canApply)
+                    .accessibilityHint(applyBlockReason ?? "Apply the reviewed live plan after writing an encrypted backup.")
+                }
+
+                if let applyBlockReason {
+                    Label(applyBlockReason, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -209,11 +216,31 @@ private struct LivePlanView: View {
     }
 
     private var canApply: Bool {
-        guard let plan = model.livePlan else { return false }
-        return !model.isRunningLivePlan &&
-            !model.isApplyingLivePlan &&
-            !model.backupPassphrase.isEmpty &&
-            plan.actions.allSatisfy { $0.kind != .conflict && $0.kind != .unsupported }
+        applyBlockReason == nil
+    }
+
+    private var applyBlockReason: String? {
+        if model.isRunningLivePlan {
+            return "Wait for the dry plan to finish before applying."
+        }
+        if model.isApplyingLivePlan {
+            return "The reviewed plan is already applying."
+        }
+        guard let plan = model.livePlan else {
+            return "Run a dry plan before applying."
+        }
+        if model.backupPassphrase.isEmpty {
+            return "Enter a backup passphrase before applying."
+        }
+        let conflictCount = plan.actions.filter { $0.kind == .conflict }.count
+        if conflictCount > 0 {
+            return "Resolve \(conflictCount) conflict\(conflictCount == 1 ? "" : "s") before applying."
+        }
+        let unsupportedCount = plan.actions.filter { $0.kind == .unsupported }.count
+        if unsupportedCount > 0 {
+            return "Unsupported passkey or TOTP actions block apply."
+        }
+        return nil
     }
 }
 
@@ -246,6 +273,13 @@ private struct RestoreView: View {
                         Label(model.isApplyingRestorePlan ? "Restoring..." : "Apply Restore", systemImage: "arrow.counterclockwise")
                     }
                     .disabled(!canApply)
+                    .accessibilityHint(applyBlockReason ?? "Apply the reviewed restore plan after writing an encrypted backup.")
+                }
+
+                if let applyBlockReason {
+                    Label(applyBlockReason, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -258,11 +292,31 @@ private struct RestoreView: View {
     }
 
     private var canApply: Bool {
-        guard let plan = model.restorePlan else { return false }
-        return !model.isRunningRestorePlan &&
-            !model.isApplyingRestorePlan &&
-            !model.restorePassphrase.isEmpty &&
-            plan.actions.allSatisfy { $0.kind != .conflict && $0.kind != .unsupported }
+        applyBlockReason == nil
+    }
+
+    private var applyBlockReason: String? {
+        if model.isRunningRestorePlan {
+            return "Wait for the restore plan to finish before applying."
+        }
+        if model.isApplyingRestorePlan {
+            return "The restore plan is already applying."
+        }
+        guard let plan = model.restorePlan else {
+            return "Run a restore plan before applying."
+        }
+        if model.restorePassphrase.isEmpty {
+            return "Enter the backup passphrase before applying."
+        }
+        let conflictCount = plan.actions.filter { $0.kind == .conflict }.count
+        if conflictCount > 0 {
+            return "Resolve \(conflictCount) restore conflict\(conflictCount == 1 ? "" : "s") before applying."
+        }
+        let unsupportedCount = plan.actions.filter { $0.kind == .unsupported }.count
+        if unsupportedCount > 0 {
+            return "Unsupported passkey or TOTP restore actions block apply."
+        }
+        return nil
     }
 }
 
@@ -303,28 +357,34 @@ private struct ConflictReviewView: View {
                         TextField("Decision output path", text: $model.decisionOutputPath)
                         HStack {
                             Button {
-                                model.loadDecisionFile()
+                                Task { await model.loadDecisionFile() }
                             } label: {
-                                Label("Load", systemImage: "folder")
+                                Label(model.isLoadingDecisionFile ? "Loading..." : "Load", systemImage: "folder")
                             }
+                            .disabled(model.isLoadingDecisionFile || model.isSavingDecisionFile)
                             Button {
-                                model.exportLatestDecisionFile()
+                                Task { await model.exportLatestDecisionFile() }
                             } label: {
-                                Label("Export", systemImage: "square.and.arrow.down")
+                                Label(model.isSavingDecisionFile ? "Writing..." : "Export", systemImage: "square.and.arrow.down")
                             }
-                            .disabled(model.livePlan == nil && model.simulationPlan == nil && model.restorePlan == nil)
+                            .disabled(model.isLoadingDecisionFile || model.isSavingDecisionFile || (model.livePlan == nil && model.simulationPlan == nil && model.restorePlan == nil))
                             Button {
-                                model.saveLoadedDecisionFile()
+                                Task { await model.saveLoadedDecisionFile() }
                             } label: {
-                                Label("Save", systemImage: "square.and.arrow.down.on.square")
+                                Label(model.isSavingDecisionFile ? "Writing..." : "Save", systemImage: "square.and.arrow.down.on.square")
                             }
-                            .disabled(model.loadedDecisionFile == nil)
+                            .disabled(model.isLoadingDecisionFile || model.isSavingDecisionFile || model.loadedDecisionFile == nil)
                             Button {
                                 model.applyLoadedDecisionFileToSelectedPlan()
                             } label: {
                                 Label("Apply to Plan", systemImage: "checkmark.rectangle.stack")
                             }
-                            .disabled(model.loadedDecisionFile == nil)
+                            .disabled(model.isLoadingDecisionFile || model.isSavingDecisionFile || model.loadedDecisionFile == nil)
+                            if model.isLoadingDecisionFile || model.isSavingDecisionFile {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .accessibilityLabel("Decision file operation in progress")
+                            }
                         }
                     }
                 }
@@ -407,6 +467,8 @@ private struct DecisionEditorRow: View {
                     }
                 }
                 .labelsHidden()
+                .accessibilityLabel("Decision for \(decision.key.description)")
+                .accessibilityHint("Select how PassSync handles this reviewed action.")
                 .frame(maxWidth: 220)
             }
 
@@ -429,6 +491,8 @@ private struct DecisionEditorRow: View {
                                 }
                             }
                             .labelsHidden()
+                            .accessibilityLabel("Provider for \(fieldDecision.field.rawValue) on \(decision.key.description)")
+                            .accessibilityHint("Choose which provider supplies this field.")
                             .frame(maxWidth: 180)
                         }
                     }
@@ -454,10 +518,11 @@ private struct RecoveryView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         TextField("Backup path", text: $model.backupInventoryPath)
                         Button {
-                            model.loadBackupInventory()
+                            Task { await model.loadBackupInventory() }
                         } label: {
-                            Label("Scan Backups", systemImage: "externaldrive.badge.magnifyingglass")
+                            Label(model.isScanningBackups ? "Scanning..." : "Scan Backups", systemImage: "externaldrive.badge.magnifyingglass")
                         }
+                        .disabled(model.isScanningBackups)
                     }
                 }
 
@@ -465,10 +530,19 @@ private struct RecoveryView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         TextField("Audit path", text: $model.auditInventoryPath)
                         Button {
-                            model.loadAuditInventory()
+                            Task { await model.loadAuditInventory() }
                         } label: {
-                            Label("Scan Receipts", systemImage: "list.bullet.rectangle")
+                            Label(model.isScanningAudits ? "Scanning..." : "Scan Receipts", systemImage: "list.bullet.rectangle")
                         }
+                        .disabled(model.isScanningAudits)
+                    }
+                }
+
+                if model.isScanningBackups || model.isScanningAudits {
+                    HStack {
+                        ProgressView()
+                        Text(model.isScanningBackups ? "Scanning backup inventory..." : "Scanning audit receipts...")
+                            .foregroundStyle(.secondary)
                     }
                 }
 

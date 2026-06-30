@@ -45,7 +45,7 @@ PassSync is not a complete password-manager migration tool. These are the curren
 ### Not Built Yet
 
 - **Continuous sync is not implemented.** v1 is one-time plan/apply only. It does not watch for changes or run in the background.
-- **The SQLite state store is metadata only.** `--record-state` and `state-*` commands can record provider-visible credential fingerprints, reviewed decision files, and apply receipts, but the sync engine does not yet use this database as a continuous-change tracker or automatic conflict resolver.
+- **The SQLite state store is metadata only.** `--record-state` and `state-*` commands record hashed credential keys, counts, safety flags, reviewed decision-file metadata, and apply receipt metadata, but the sync engine does not yet use this database as a continuous-change tracker or automatic conflict resolver.
 - **Field-level conflict merge is decision-file based.** The CLI and SwiftUI app can apply reviewed per-field merge decisions from JSON decision files, but the interactive CLI prompt is still per-record.
 - **Only website/app login records are in sync scope.** `item-audit` can count unsupported 1Password item categories, but secure notes, credit cards, identities, Wi-Fi passwords, SSH keys, software licenses, custom item types, and arbitrary custom fields are not synced.
 - **The native macOS app is local-build only.** A SwiftUI app target exists and unsigned release archives can be created locally, but Developer ID signing, notarization, auto-update, and installer packaging are not implemented.
@@ -139,10 +139,12 @@ swift run passsync sync \
   --apply
 ```
 
-For non-interactive backup passphrase input:
+For non-interactive test or CI runs, PassSync can read `PASSSYNC_BACKUP_PASSPHRASE`
+from the environment. Do not put real backup passphrases inline in shell commands
+or committed scripts; prefer the interactive prompt for real backups.
 
 ```sh
-PASSSYNC_BACKUP_PASSPHRASE='use-a-real-secret' \
+PASSSYNC_BACKUP_PASSPHRASE='use-a-test-only-passphrase' \
 swift run passsync sync \
   --direction bidirectional \
   --truth-source 1password \
@@ -181,7 +183,7 @@ List and inspect offline examples:
 ```sh
 swift run passsync examples list
 swift run passsync examples show conflict
-swift run passsync examples write bidirectional --output /tmp/passsync-bidirectional.json
+swift run passsync examples write bidirectional --output "$HOME/.passsync/simulations/passsync-bidirectional.json"
 ```
 
 The `Examples/malformed-*.json` files are intentional negative fixtures used by tests for parser and fail-closed error handling. Do not use them as simulation inputs except when testing failures.
@@ -230,7 +232,7 @@ Export a live decision file without applying:
 swift run passsync plan \
   --direction bidirectional \
   --truth-source 1password \
-  --output /tmp/passsync-decisions.json
+  --output "$HOME/.passsync/decisions/passsync-decisions.json"
 ```
 
 Use an edited decision file during a dry run:
@@ -238,7 +240,7 @@ Use an edited decision file during a dry run:
 ```sh
 swift run passsync plan \
   --direction bidirectional \
-  --decision-file /tmp/passsync-decisions.json
+  --decision-file "$HOME/.passsync/decisions/passsync-decisions.json"
 ```
 
 Apply only after reviewing the decision-adjusted plan:
@@ -246,7 +248,7 @@ Apply only after reviewing the decision-adjusted plan:
 ```sh
 swift run passsync sync \
   --direction bidirectional \
-  --decision-file /tmp/passsync-decisions.json \
+  --decision-file "$HOME/.passsync/decisions/passsync-decisions.json" \
   --backup-path "$HOME/.passsync/backups/reviewed-sync.psbackup" \
   --apply
 ```
@@ -344,7 +346,7 @@ PassSync can maintain a local SQLite metadata database at:
 $HOME/.passsync/state/passsync.sqlite
 ```
 
-The state store is intentionally non-secret. It stores provider, host/username key, source ID, vault ID, title, URL count, TOTP/passkey booleans, modification/observation timestamps, raw provider fingerprints, decision-file hashes, and receipt hashes. It does not store passwords, TOTP seeds, notes, or backup passphrases. The SQLite database uses `PRAGMA user_version`; PassSync initializes and migrates unversioned stores to the current schema and refuses newer unsupported schemas.
+The state store is intentionally non-secret and avoids durable titles or provider item identifiers. Credential snapshots store provider, a SHA-256 fingerprint of the normalized host/username key, URL count, TOTP/passkey booleans, and modification/observation timestamps. Decision-file and receipt metadata store file hashes, counts, and local paths. The state store does not store passwords, TOTP seeds, notes, backup passphrases, source item IDs, vault IDs, titles, or raw provider fingerprints. The SQLite database uses `PRAGMA user_version`; PassSync initializes and migrates unversioned or v1 stores to the current schema and refuses newer unsupported schemas.
 
 Record metadata from an offline simulation fixture:
 
@@ -370,7 +372,7 @@ swift run passsync plan \
 Record metadata from a reviewed decision file or apply receipt:
 
 ```sh
-swift run passsync state-record-decision --input /tmp/passsync-decisions.json
+swift run passsync state-record-decision --input "$HOME/.passsync/decisions/passsync-decisions.json"
 swift run passsync state-record-receipt --input "$HOME/.passsync/audit/passsync-sync-example.receipt.json"
 ```
 
@@ -381,7 +383,7 @@ swift run passsync state-summary
 swift run passsync state-list-credentials --limit 25
 ```
 
-Use `--state-path /tmp/passsync-state.sqlite` for isolated tests. `--record-state` records non-secret snapshots during `plan`, `sync`, `simulate`, and `restore` workflows, plus decision-file and receipt metadata when those files are written. The state store is groundwork for safer future sync workflows; it does not enable continuous sync in v1.
+Use `--state-path /tmp/passsync-state.sqlite` only for isolated tests. `--record-state` records non-secret snapshots during `plan`, `sync`, `simulate`, and `restore` workflows, plus decision-file and receipt metadata when those files are written. The state store is groundwork for safer future sync workflows; it does not enable continuous sync in v1.
 
 ## Simulation
 
@@ -425,7 +427,7 @@ swift run passsync simulate \
   --input Examples/simulation-state.json \
   --direction bidirectional \
   --vault PassSync-Test \
-  --output /tmp/passsync-sim-decisions.json
+  --output "$HOME/.passsync/decisions/passsync-sim-decisions.json"
 ```
 
 Write a simulated output state while treating 1Password as the truth source:
@@ -433,7 +435,7 @@ Write a simulated output state while treating 1Password as the truth source:
 ```sh
 swift run passsync simulate \
   --input Examples/simulation-state.json \
-  --output /tmp/passsync-sim-output.json \
+  --output "$HOME/.passsync/simulations/passsync-sim-output.json" \
   --direction bidirectional \
   --truth-source 1password \
   --vault PassSync-Test \
@@ -446,7 +448,7 @@ Test an edited decision file in the simulator:
 swift run passsync simulate \
   --input Examples/simulation-state.json \
   --direction bidirectional \
-  --decision-file /tmp/passsync-sim-decisions.json
+  --decision-file "$HOME/.passsync/decisions/passsync-sim-decisions.json"
 ```
 
 Simulation deliberately mimics v1 provider limitations:
@@ -524,11 +526,15 @@ PassSync treats TOTP seeds as secrets:
 - Apple-to-1Password TOTP writes are supported when a source record includes an `otpauth://` URI.
 - 1Password-to-Apple TOTP writes are blocked because the Apple Keychain internet-password API does not safely create Passwords.app verification-code entries.
 
-To intentionally allow password-only writes when security material cannot be transferred:
+To intentionally allow password-only Apple writes for TOTP-bearing records when
+verification-code material cannot be transferred:
 
 ```sh
 --allow-password-only-for-unsupported-security-material
 ```
+
+This flag does not allow passkey-bearing records. Passkey records remain blocked
+unless a future provider-supported credential-exchange path exists.
 
 Use that flag only after reviewing the plan.
 

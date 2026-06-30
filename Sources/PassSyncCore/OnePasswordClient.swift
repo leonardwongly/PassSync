@@ -68,7 +68,7 @@ public struct OnePasswordClient<Runner: ProcessRunning>: OnePasswordManaging {
             throw PassSyncError.invalidArguments("Cannot update a 1Password item without sourceID.")
         }
         if existing.hasPasskey {
-            throw PassSyncError.unsafeApply("Refusing to edit 1Password item \(id) because it appears to contain passkey data.")
+            throw PassSyncError.unsafeApply("Refusing to edit 1Password item because it appears to contain passkey data.")
         }
         let payload = try makeTemplate(record: record, existingID: id)
         var arguments = ["item", "edit", id]
@@ -83,12 +83,24 @@ public struct OnePasswordClient<Runner: ProcessRunning>: OnePasswordManaging {
         if result.status != 0 {
             let stderr = String(data: result.stderr, encoding: .utf8) ?? ""
             throw PassSyncError.commandFailed(
-                command: "op \(arguments.joined(separator: " "))",
+                command: displayCommand(arguments),
                 status: result.status,
                 stderr: SecretRedactor.redactJSONLikeString(stderr)
             )
         }
         return result
+    }
+
+    private func displayCommand(_ arguments: [String]) -> String {
+        guard arguments.count >= 3,
+              arguments[0] == "item",
+              ["get", "edit"].contains(arguments[1]) else {
+            return "op \(arguments.joined(separator: " "))"
+        }
+
+        var redacted = arguments
+        redacted[2] = "<item-id>"
+        return "op \(redacted.joined(separator: " "))"
     }
 
     private func mapDetail(_ detail: OnePasswordItemDetail, raw: Data) throws -> CredentialRecord? {
